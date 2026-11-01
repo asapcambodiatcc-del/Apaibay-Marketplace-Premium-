@@ -1,0 +1,23 @@
+import { FirebaseProductRepository } from './firebase/FirebaseProductRepository';
+import { FirebaseCategoryRepository } from './firebase/FirebaseCategoryRepository';
+import { FirebaseCartRepository } from './firebase/FirebaseCartRepository';
+import { FirebaseWishlistRepository } from './firebase/FirebaseWishlistRepository';
+import { FirebaseUserRepository } from './firebase/FirebaseUserRepository';
+import { FirebaseOrderRepository } from './firebase/FirebaseOrderRepository';
+import { FirebaseSellerRepository } from './firebase/FirebaseSellerRepository';
+import { FirebaseAddressRepository } from './firebase/FirebaseAddressRepository';
+import { FirebaseReviewRepository } from './firebase/FirebaseReviewRepository';
+import { FirebaseNotificationRepository } from './firebase/FirebaseNotificationRepository';
+import { FirebaseCouponRepository } from './firebase/FirebaseCouponRepository';
+
+export const productRepository = new FirebaseProductRepository();
+export const categoryRepository = new FirebaseCategoryRepository();
+export const cartRepository = new FirebaseCartRepository();
+export const wishlistRepository = new FirebaseWishlistRepository();
+export const userRepository = new FirebaseUserRepository();
+export const orderRepository = new FirebaseOrderRepository();
+export const sellerRepository = new FirebaseSellerRepository();
+export const addressRepository = new FirebaseAddressRepository();
+export const reviewRepository = new FirebaseReviewRepository();
+export const notificationRepository = new FirebaseNotificationRepository();
+export const couponRepository = new FirebaseCouponRepository();

@@ -1,0 +1,172 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Deny-by-Default Fallback
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Security Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == 'asapcambodia.tcc@gmail.com'
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Users collection
+    match /users/{uid} {
+      allow get: if isOwner(uid) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isOwner(uid)
+        && request.resource.data.uid == uid
+        && (request.resource.data.role == 'customer' || request.resource.data.role == 'seller' || isAdmin());
+      allow update: if (
+        isOwner(uid)
+        && request.resource.data.uid == uid
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']) || isAdmin())
+      ) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Products collection (Public catalog reads, Seller-scoped writes)
+    match /products/{productId} {
+      allow read: if true;
+      allow create: if isSignedIn() && (
+        request.resource.data.sellerId == request.auth.uid || isAdmin()
+      );
+      allow update: if isSignedIn() && (
+        resource.data.sellerId == request.auth.uid || isAdmin()
+      );
+      allow delete: if isSignedIn() && (
+        resource.data.sellerId == request.auth.uid || isAdmin()
+      );
+    }
+
+    // Categories collection
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Sellers collection
+    match /sellers/{sellerId} {
+      allow read: if true;
+      allow create: if isSignedIn() && (
+        (request.resource.data.ownerUid == request.auth.uid && request.resource.data.verificationStatus == 'pending') ||
+        isAdmin()
+      );
+      allow update: if (
+        isAdmin() ||
+        (isSignedIn() && resource.data.ownerUid == request.auth.uid && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['verificationStatus', 'ownerUid', 'reviewedAt', 'reviewedBy']))
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Seller Ledger collection (Server-authoritative commission and earnings accounting)
+    match /sellerLedger/{ledgerId} {
+      allow get, list: if isSignedIn() && (
+        resource.data.sellerId == request.auth.uid || isAdmin()
+      );
+      allow write: if false; // All ledger records, sales commissions, and refund adjustments strictly managed by trusted backend
+    }
+
+    // Orders collection (Authoritative: creation strictly routed through trusted backend)
+    match /orders/{orderId} {
+      allow get: if isSignedIn() && (
+        resource.data.customerUid == request.auth.uid || isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        resource.data.customerUid == request.auth.uid || isAdmin()
+      );
+      allow create: if false; // All order creation MUST occur via trusted backend (POST /api/commerce/orders)
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Server-only idempotency keys
+    match /idempotency_keys/{keyId} {
+      allow read, write: if false;
+    }
+
+    // Payments collection (Read restricted to owner or admin, write strictly blocked for clients)
+    match /payments/{paymentId} {
+      allow get: if isSignedIn() && (
+        resource.data.customerUid == request.auth.uid || isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        resource.data.customerUid == request.auth.uid || isAdmin()
+      );
+      allow create: if false;
+      allow update, delete: if false;
+      allow write: if false; // All payments, state transitions, refunds MUST be written by trusted backend payment state machine
+    }
+
+    // Payment audit events (Read restricted to actor or admin, write strictly blocked for clients)
+    match /paymentEvents/{eventId} {
+      allow get: if isSignedIn() && (
+        resource.data.actorUid == request.auth.uid || isAdmin()
+      );
+      allow list: if isAdmin();
+      allow write: if false; // Append-only audit logs can only be created by trusted backend
+    }
+
+    // Addresses collection
+    match /addresses/{addressId} {
+      allow get, list: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // Carts collection (Private per authenticated user)
+    match /carts/{uid} {
+      allow read, write: if isOwner(uid) || isAdmin();
+    }
+
+    // Wishlists collection (Private per authenticated user)
+    match /wishlists/{uid} {
+      allow read, write: if isOwner(uid) || isAdmin();
+    }
+
+    // Reviews collection (Public read, verified author write)
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // Coupons collection (Public read for checkout coupon validation, Admin write)
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Notifications collection (Private per user)
+    match /notifications/{notificationId} {
+      allow get, list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow create, delete: if isAdmin();
+    }
+
+    // Admins collection (Admin identity lookup)
+    match /admins/{uid} {
+      allow get: if isOwner(uid) || isAdmin();
+      allow list: if isAdmin();
+      allow write: if false;
+    }
+  }
+}

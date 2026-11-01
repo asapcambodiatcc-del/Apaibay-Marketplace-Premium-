@@ -1,0 +1,369 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Registered customer, seller, or administrator profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "displayName": { "type": "string", "maxLength": 100 },
+        "photoURL": { "type": "string", "maxLength": 500 },
+        "phone": { "type": "string", "maxLength": 30 },
+        "role": { "type": "string", "enum": ["customer", "seller", "admin"] },
+        "preferredLanguage": { "type": "string", "maxLength": 10 },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "maxLength": 50 },
+        "status": { "type": "string", "enum": ["active", "suspended", "pending"] },
+        "apaibayPoints": { "type": "number" },
+        "tier": { "type": "string", "maxLength": 30 }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Marketplace product catalog item with multi-language fields",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "sellerId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "slug": { "type": "string", "maxLength": 200 },
+        "category": { "type": "string", "maxLength": 100 },
+        "categoryId": { "type": "string", "maxLength": 100 },
+        "brand": { "type": "string", "maxLength": 100 },
+        "price": { "type": "number" },
+        "originalPrice": { "type": "number" },
+        "compareAtPrice": { "type": "number" },
+        "discountPercentage": { "type": "number" },
+        "currency": { "type": "string", "maxLength": 10 },
+        "rating": { "type": "number" },
+        "reviewCount": { "type": "number" },
+        "inStock": { "type": "boolean" },
+        "stock": { "type": "number" },
+        "stockCount": { "type": "number" },
+        "sku": { "type": "string", "maxLength": 50 },
+        "barcode": { "type": "string", "maxLength": 50 },
+        "description": { "type": "string", "maxLength": 5000 },
+        "image": { "type": "string", "maxLength": 500 },
+        "status": { "type": "string", "enum": ["active", "draft", "archived"] },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "sellerId", "name", "price", "category"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Canonical product taxonomy node",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 100 },
+        "name": { "type": "string", "maxLength": 100 },
+        "slug": { "type": "string", "maxLength": 100 },
+        "iconName": { "type": "string", "maxLength": 50 },
+        "image": { "type": "string", "maxLength": 500 },
+        "parentId": { "type": "string", "maxLength": 100 },
+        "sortOrder": { "type": "number" },
+        "active": { "type": "boolean" },
+        "productCount": { "type": "number" }
+      },
+      "required": ["id", "name", "slug"]
+    },
+    "Seller": {
+      "title": "Seller",
+      "description": "Verified seller and merchant profile",
+      "type": "object",
+      "properties": {
+        "sellerId": { "type": "string", "maxLength": 128 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "storeName": { "type": "string", "maxLength": 150 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "logo": { "type": "string", "maxLength": 500 },
+        "verificationStatus": { "type": "string", "enum": ["verified", "pending", "rejected", "suspended"] },
+        "businessCountry": { "type": "string", "maxLength": 10 },
+        "businessType": { "type": "string", "enum": ["individual", "registered_business", "enterprise"] },
+        "submittedAt": { "type": "string", "maxLength": 50 },
+        "reviewedAt": { "type": "string", "maxLength": 50 },
+        "reviewedBy": { "type": "string", "maxLength": 128 },
+        "rejectionReason": { "type": "string", "maxLength": 500 },
+        "commissionRate": { "type": "number" },
+        "payoutStatus": { "type": "string", "enum": ["unavailable", "not_configured"] },
+        "rating": { "type": "number" },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["sellerId", "ownerUid", "storeName"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer purchase transaction record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "customerUid": { "type": "string", "maxLength": 128 },
+        "subtotal": { "type": "number" },
+        "shipping": { "type": "number" },
+        "shippingFee": { "type": "number" },
+        "discount": { "type": "number" },
+        "total": { "type": "number" },
+        "currency": { "type": "string", "maxLength": 10 },
+        "status": { "type": "string", "enum": ["Order Placed", "Processing", "Shipped", "Out for Delivery", "Delivered"] },
+        "paymentStatus": { "type": "string", "enum": ["pending", "paid", "failed", "refunded"] },
+        "trackingNumber": { "type": "string", "maxLength": 100 },
+        "carrier": { "type": "string", "maxLength": 100 },
+        "estimatedDelivery": { "type": "string", "maxLength": 100 },
+        "date": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "customerUid", "total", "status"]
+    },
+    "Address": {
+      "title": "Address",
+      "description": "Customer shipping or billing address",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "uid": { "type": "string", "maxLength": 128 },
+        "fullName": { "type": "string", "maxLength": 100 },
+        "street": { "type": "string", "maxLength": 200 },
+        "city": { "type": "string", "maxLength": 100 },
+        "state": { "type": "string", "maxLength": 100 },
+        "postalCode": { "type": "string", "maxLength": 20 },
+        "country": { "type": "string", "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 30 },
+        "isDefault": { "type": "boolean" },
+        "type": { "type": "string", "enum": ["shipping", "billing"] },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "uid", "fullName", "street", "city", "country"]
+    },
+    "Cart": {
+      "title": "Cart",
+      "description": "Persistent customer shopping cart",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["uid"]
+    },
+    "Wishlist": {
+      "title": "Wishlist",
+      "description": "Customer saved favorite product IDs",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["uid"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "Customer product feedback and rating",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "productId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 100 },
+        "rating": { "type": "number" },
+        "comment": { "type": "string", "maxLength": 2000 },
+        "verifiedPurchase": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["published", "pending", "rejected"] },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "productId", "userId", "rating", "comment"]
+    },
+    "Coupon": {
+      "title": "Coupon",
+      "description": "Discount promotion voucher",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 50 },
+        "code": { "type": "string", "maxLength": 50 },
+        "discountType": { "type": "string", "enum": ["percentage", "fixed"] },
+        "discountValue": { "type": "number" },
+        "minOrderAmount": { "type": "number" },
+        "maxDiscount": { "type": "number" },
+        "expiresAt": { "type": "string", "maxLength": 50 },
+        "active": { "type": "boolean" }
+      },
+      "required": ["id", "code", "discountType", "discountValue", "active"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "In-app alerts and transaction updates",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "enum": ["order", "seller", "security", "promo"] },
+        "title": { "type": "string", "maxLength": 150 },
+        "message": { "type": "string", "maxLength": 1000 },
+        "read": { "type": "boolean" },
+        "link": { "type": "string", "maxLength": 250 },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "userId", "title", "message", "read"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Designated marketplace administrator record",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "assignedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["uid", "email"]
+    },
+    "IdempotencyRecord": {
+      "title": "IdempotencyRecord",
+      "description": "Server-side deduplication token for commerce transactions",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string", "maxLength": 128 },
+        "customerUid": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["orderId", "customerUid"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Authoritative payment intent and transaction record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "orderId": { "type": "string", "maxLength": 128 },
+        "customerUid": { "type": "string", "maxLength": 128 },
+        "amount": { "type": "number" },
+        "currency": { "type": "string", "maxLength": 10 },
+        "status": { "type": "string", "enum": ["created", "pending", "processing", "requires_action", "paid", "failed", "cancelled", "refunded", "partially_refunded"] },
+        "methodType": { "type": "string", "enum": ["cod", "khqr", "aba_payway", "wing", "card", "paypal", "stripe"] },
+        "provider": { "type": "string", "maxLength": 50 },
+        "clientSecret": { "type": "string", "maxLength": 128 },
+        "idempotencyKey": { "type": "string", "maxLength": 128 },
+        "attemptsCount": { "type": "number" },
+        "sandboxMode": { "type": "boolean" },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "orderId", "customerUid", "amount", "status"]
+    },
+    "PaymentEvent": {
+      "title": "PaymentEvent",
+      "description": "Immutable append-only audit event for payment lifecycle transitions",
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string", "maxLength": 128 },
+        "paymentId": { "type": "string", "maxLength": 128 },
+        "orderId": { "type": "string", "maxLength": 128 },
+        "eventType": { "type": "string", "maxLength": 100 },
+        "previousStatus": { "type": ["string", "null"] },
+        "newStatus": { "type": "string", "maxLength": 50 },
+        "actorType": { "type": "string", "enum": ["customer", "seller", "admin", "system"] },
+        "actorUid": { "type": "string", "maxLength": 128 },
+        "provider": { "type": "string", "maxLength": 50 },
+        "timestamp": { "type": "string", "maxLength": 50 },
+        "idempotencyKey": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["eventId", "paymentId", "orderId", "eventType", "newStatus", "actorType", "timestamp"]
+    },
+    "SellerLedger": {
+      "title": "SellerLedger",
+      "description": "Server-authoritative seller commission and earnings ledger entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "orderId": { "type": "string", "maxLength": 128 },
+        "sellerId": { "type": "string", "maxLength": 128 },
+        "productId": { "type": "string", "maxLength": 128 },
+        "productName": { "type": "string", "maxLength": 200 },
+        "quantity": { "type": "number" },
+        "currency": { "type": "string", "maxLength": 10 },
+        "eligibleSubtotal": { "type": "number" },
+        "eligibleSubtotalCents": { "type": "number" },
+        "commissionRate": { "type": "number" },
+        "commissionAmount": { "type": "number" },
+        "commissionAmountCents": { "type": "number" },
+        "netAmount": { "type": "number" },
+        "netAmountCents": { "type": "number" },
+        "type": { "type": "string", "enum": ["sale", "refund_adjustment", "cancellation_adjustment"] },
+        "status": { "type": "string", "enum": ["calculated", "held", "settled"] },
+        "payoutStatus": { "type": "string", "enum": ["unavailable", "not_configured"] },
+        "isPlatformOwned": { "type": "boolean" },
+        "relatedLedgerId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "orderId", "sellerId", "productId", "type", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profile with role, settings, and contact info"
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Catalog products published by verified sellers"
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Category directory for navigation and filtering"
+    },
+    "/sellers/{sellerId}": {
+      "schema": "Seller",
+      "description": "Storefront merchant profile and details"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Customer orders with line items, tracking, and statuses"
+    },
+    "/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Secure payment records governed by server payment state machine"
+    },
+    "/paymentEvents/{eventId}": {
+      "schema": "PaymentEvent",
+      "description": "Append-only payment lifecycle audit trail"
+    },
+
+    "/addresses/{addressId}": {
+      "schema": "Address",
+      "description": "Shipping addresses belonging to specific customers"
+    },
+    "/carts/{uid}": {
+      "schema": "Cart",
+      "description": "Active shopping cart data for authenticated users"
+    },
+    "/wishlists/{uid}": {
+      "schema": "Wishlist",
+      "description": "Saved favorite items for authenticated users"
+    },
+    "/reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Customer reviews for products"
+    },
+    "/coupons/{couponId}": {
+      "schema": "Coupon",
+      "description": "Valid promotional discount codes"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "User notifications regarding orders and account activities"
+    },
+    "/admins/{uid}": {
+      "schema": "Admin",
+      "description": "Privileged platform administrator records"
+    },
+    "/idempotency_keys/{keyId}": {
+      "schema": "IdempotencyRecord",
+      "description": "Server-side deduplication tokens"
+    },
+    "/sellerLedger/{ledgerId}": {
+      "schema": "SellerLedger",
+      "description": "Immutable ledger tracking commissions, seller net earnings, and refund adjustments"
+    }
+  }
+}

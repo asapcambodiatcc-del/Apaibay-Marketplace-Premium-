@@ -1,0 +1,6 @@
+{
+  "name": "apaibay - Your Global Marketplace",
+  "description": "apaibay Marketplace Premium ecommerce platform with flash sales, verified sellers, category exploration, live deals, shoppable videos, and complete checkout experience.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
