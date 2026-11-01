@@ -126,7 +126,7 @@ export const ProductSections: React.FC<ProductSectionsProps> = ({
       </div>
 
       {/* Product Card Grid (2 cols mobile, 3 sm, 4 lg, 5 xl) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-3.5 sm:gap-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 sm:gap-4 lg:gap-5">
         {filtered.map((product) => {
           const isWishlisted = wishlist.includes(product.id);
           const isAdded = !!addedMap[product.id];
@@ -135,10 +135,10 @@ export const ProductSections: React.FC<ProductSectionsProps> = ({
             <div
               key={product.id}
               onClick={() => onSelectProduct(product)}
-              className="group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-3.5 flex flex-col justify-between hover:shadow-xl hover:border-[#ff6a00]/60 transition-all duration-300 cursor-pointer relative"
+              className="group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3.5 flex flex-col justify-between hover:shadow-xl hover:border-[#ff6a00]/60 transition-all duration-300 cursor-pointer relative"
             >
               {/* Product Visual Container */}
-              <div className="relative h-48 sm:h-52 w-full rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 mb-3">
+              <div className="relative h-36 xs:h-44 sm:h-52 w-full rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 mb-2 sm:mb-3">
                 <img
                   src={product.image || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80'}
                   alt={product.name || 'Product'}

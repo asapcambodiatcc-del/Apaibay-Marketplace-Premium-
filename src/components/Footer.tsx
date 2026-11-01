@@ -95,9 +95,9 @@ export const Footer: React.FC<FooterProps> = ({
         </div>
 
         {/* Main Footer Multi-Column Links */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8">
+        <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6 sm:gap-8">
           {/* Col 1: Brand info */}
-          <div className="col-span-2 space-y-4">
+          <div className="xs:col-span-2 space-y-4">
             <div className="flex items-center">
               <span className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
                 apai<span className="text-[#ff6a00]">bay</span>
@@ -250,7 +250,7 @@ export const Footer: React.FC<FooterProps> = ({
 
         {/* Bottom Strip: Payment Methods, Legal & Social */}
         <div className="pt-8 border-t border-slate-200 dark:border-slate-800/80 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-[11px]">
+          <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 text-slate-500 dark:text-slate-400 text-[11px] text-center md:text-left">
             <span>{t('footer.allRights', '© 2026 apaibay Marketplace. All rights reserved.')}</span>
             <span>•</span>
             <a href="#privacy" className="hover:text-slate-800 dark:hover:text-slate-300">{t('footer.privacyPolicy', 'Privacy Policy')}</a>
@@ -261,9 +261,9 @@ export const Footer: React.FC<FooterProps> = ({
           </div>
 
           {/* Payment Badges */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-center gap-2">
             <span className="text-[10px] text-slate-500 dark:text-slate-400 mr-1 hidden sm:inline">{t('footer.paymentMethods', 'Secure Checkout:')}</span>
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center justify-center gap-1.5">
               {['VISA', 'Mastercard', 'AMEX', 'PayPal', 'ApplePay', 'GooglePay'].map((method) => (
                 <span
                   key={method}

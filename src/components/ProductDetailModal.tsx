@@ -103,10 +103,10 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
         <div className="grid grid-cols-1 md:grid-cols-12 max-h-[85vh] overflow-y-auto">
           {/* Left: Gallery (md:col-span-6) */}
-          <div className="md:col-span-6 p-6 bg-slate-50 dark:bg-slate-950/60 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+          <div className="md:col-span-6 p-4 sm:p-6 bg-slate-50 dark:bg-slate-950/60 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between">
             <div>
               {/* Main Image */}
-              <div className="relative h-72 sm:h-80 w-full rounded-2xl overflow-hidden bg-white dark:bg-slate-900 shadow-xs border border-slate-200/80 dark:border-slate-800 mb-4">
+              <div className="relative h-60 sm:h-80 w-full rounded-2xl overflow-hidden bg-white dark:bg-slate-900 shadow-xs border border-slate-200/80 dark:border-slate-800 mb-4">
                 <img
                   src={displayImage}
                   alt={product.name}
@@ -174,7 +174,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           </div>
 
           {/* Right: Product Details & Purchase Actions (md:col-span-6) */}
-          <div className="md:col-span-6 p-6 sm:p-8 flex flex-col justify-between">
+          <div className="md:col-span-6 p-4 sm:p-6 lg:p-8 flex flex-col justify-between">
             <div className="space-y-4">
               {/* Category & Brand */}
               <div className="flex items-center justify-between text-xs">

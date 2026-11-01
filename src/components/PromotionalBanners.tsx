@@ -51,7 +51,7 @@ export const PromotionalBanners: React.FC<PromotionalBannersProps> = ({ onSelect
         <div
           key={promo.id}
           onClick={() => onSelectPromotion(promo.filter)}
-          className="group relative rounded-2xl overflow-hidden shadow-xs hover:shadow-xl transition-all duration-300 min-h-[220px] sm:min-h-[240px] flex flex-col justify-between p-6 cursor-pointer border border-slate-200 dark:border-slate-800"
+          className="group relative rounded-2xl overflow-hidden shadow-xs hover:shadow-xl transition-all duration-300 min-h-[190px] sm:min-h-[240px] flex flex-col justify-between p-4 sm:p-6 cursor-pointer border border-slate-200 dark:border-slate-800"
         >
           {/* Background Image with Zoom */}
           <div

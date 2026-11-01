@@ -125,12 +125,12 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="sticky top-0 z-40 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 transition-colors shadow-xs">
       {/* Top micro announcement bar */}
-      <div className="bg-slate-100 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800/80 text-[12px] text-slate-600 dark:text-slate-400 py-1 px-4 sm:px-8">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <span className="font-medium text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#ff6a00] animate-pulse"></span>
-              Enterprise-level ecommerce platform
+      <div className="bg-slate-100 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800/80 text-[11px] sm:text-xs text-slate-600 dark:text-slate-400 py-1 px-3 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+            <span className="font-medium text-slate-800 dark:text-slate-200 flex items-center gap-1.5 truncate text-[11px] sm:text-xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#ff6a00] animate-pulse shrink-0"></span>
+              <span className="truncate">Enterprise-level ecommerce platform</span>
             </span>
             <span className="hidden md:inline text-slate-300 dark:text-slate-700">|</span>
             <span className="hidden md:inline hover:text-[#ff6a00] cursor-pointer transition-colors" onClick={() => onSelectCategory('electronics')}>
@@ -138,7 +138,7 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           </div>
 
-          <div className="flex items-center gap-3 sm:gap-5">
+          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
             {/* Dark Mode toggle */}
             <button
               id="theme-toggle-btn"
@@ -252,17 +252,17 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Main Brand & Search Row */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-8 py-3 sm:py-3.5">
-        <div className="flex items-center justify-between gap-3 sm:gap-6">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3.5">
+        <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-y-2.5 sm:gap-6">
           {/* Logo & Mobile Menu */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 order-1 shrink-0">
             <button
               id="mobile-category-toggle"
               onClick={onToggleMobileCategory}
-              className="lg:hidden p-1.5 text-slate-600 dark:text-slate-300 hover:text-[#ff6a00] hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+              className="lg:hidden p-1.5 text-slate-600 dark:text-slate-300 hover:text-[#ff6a00] hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
               title="Categories"
             >
-              <Menu className="w-6 h-6" />
+              <Menu className="w-5 h-5 sm:w-6 sm:h-6" />
             </button>
 
             <div
@@ -274,10 +274,10 @@ export const Header: React.FC<HeaderProps> = ({
               className="cursor-pointer group flex flex-col select-none"
             >
               <div className="flex items-center tracking-tight">
-                <span className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                <span className="text-xl sm:text-2xl md:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
                   apai<span className="text-[#ff6a00]">bay</span>
                 </span>
-                <span className="w-2 h-2 rounded-full bg-[#ff6a00] ml-1 mb-2 group-hover:scale-125 transition-transform duration-300"></span>
+                <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-[#ff6a00] ml-1 mb-1.5 sm:mb-2 group-hover:scale-125 transition-transform duration-300"></span>
               </div>
               <span className="text-[9px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest -mt-1 hidden sm:block">
                 Your Global Marketplace
@@ -289,7 +289,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             id="delivery-location-btn"
             onClick={() => setShowLocationModal(true)}
-            className="hidden xl:flex items-center gap-2 px-3 py-1.5 text-left rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-700"
+            className="hidden xl:flex items-center gap-2 px-3 py-1.5 text-left rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-700 order-2 shrink-0"
           >
             <MapPin className="w-4 h-4 text-[#ff6a00] shrink-0" />
             <div className="text-xs leading-tight">
@@ -301,10 +301,10 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </button>
 
-          {/* Large AI Search Bar */}
-          <div ref={searchRef} className="flex-1 max-w-2xl relative">
+          {/* Large AI Search Bar - Full width on mobile row 2, center column on sm+ */}
+          <div ref={searchRef} className="w-full sm:flex-1 sm:max-w-2xl relative order-3 sm:order-2">
             <div className="flex items-center relative rounded-full border border-slate-300 dark:border-slate-700 focus-within:border-[#ff6a00] focus-within:ring-2 focus-within:ring-[#ff6a00]/20 bg-slate-50 dark:bg-slate-800 transition-all">
-              <div className="pl-3.5 sm:pl-4 text-slate-400">
+              <div className="pl-3 sm:pl-4 text-slate-400 shrink-0">
                 <Sparkles className="w-4 h-4 text-[#ff6a00]" />
               </div>
               <input
@@ -314,20 +314,20 @@ export const Header: React.FC<HeaderProps> = ({
                 onChange={(e) => onSearch(e.target.value)}
                 onFocus={() => setIsSearchFocused(true)}
                 placeholder={t('common.searchPlaceholder', 'Search 50M+ products, luxury brands & deals...')}
-                className="w-full py-2 sm:py-2.5 pl-2.5 pr-10 text-xs sm:text-sm bg-transparent text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden"
+                className="w-full min-w-0 py-2 sm:py-2.5 pl-2 pr-1 text-xs sm:text-sm bg-transparent text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden"
               />
               {searchQuery && (
                 <button
                   id="clear-search-btn"
                   onClick={() => onSearch('')}
-                  className="p-1 mr-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  className="p-1 mr-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0"
                 >
                   <X className="w-4 h-4" />
                 </button>
               )}
 
               {/* Functional Camera & Scan Action Buttons */}
-              <div className="flex items-center gap-0.5 sm:gap-1 mr-1.5 shrink-0">
+              <div className="flex items-center gap-0.5 sm:gap-1 mr-1 shrink-0">
                 <button
                   type="button"
                   id="header-camera-search-btn"
@@ -398,7 +398,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Action Icons: Wishlist, Account, Orders, Cart */}
-          <div className="flex items-center gap-1 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2.5 shrink-0 order-2 sm:order-3">
             {/* Wishlist */}
             <button
               id="header-wishlist-btn"

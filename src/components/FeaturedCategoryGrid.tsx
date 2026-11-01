@@ -36,14 +36,14 @@ export const FeaturedCategoryGrid: React.FC<FeaturedCategoryGridProps> = ({
       </div>
 
       {/* Grid: 2 cols on mobile, 3 on sm, 4 on md, 6 on xl - 12 categories total */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 sm:gap-4">
         {CATEGORIES.map((cat) => {
           const isSelected = selectedCategory === cat.slug;
           return (
             <div
               key={cat.id}
               onClick={() => onSelectCategory(cat.slug)}
-              className={`group relative h-40 sm:h-44 rounded-2xl overflow-hidden cursor-pointer shadow-xs transition-all duration-300 hover:-translate-y-1 hover:shadow-lg border ${
+              className={`group relative h-32 xs:h-36 sm:h-40 md:h-44 rounded-2xl overflow-hidden cursor-pointer shadow-xs transition-all duration-300 hover:-translate-y-1 hover:shadow-lg border ${
                 isSelected
                   ? 'ring-3 ring-[#ff6a00] border-[#ff6a00]'
                   : 'border-slate-200/80 dark:border-slate-800'

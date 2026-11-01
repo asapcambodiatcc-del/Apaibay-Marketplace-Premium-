@@ -36,15 +36,15 @@ export const AIPicksPromotionalPanel: React.FC<AIPicksPromotionalPanelProps> = (
   };
 
   return (
-    <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 sm:p-7 shadow-xs overflow-hidden">
+    <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl sm:rounded-3xl p-3.5 sm:p-6 lg:p-7 shadow-xs overflow-hidden">
       {/* Section Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6 pb-4 border-b border-slate-100 dark:border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-slate-100 dark:border-slate-800">
         <div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-50 dark:bg-orange-950/40 text-[#ff6a00] text-xs font-bold uppercase tracking-wider mb-1">
             <Sparkles className="w-3.5 h-3.5" />
             <span>{t('home.aiRecommendations', 'AI Smart Recommendations')}</span>
           </div>
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+          <h2 className="text-lg sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
             {t('home.curatedGlobalPicks', 'Curated Global Picks For You')}
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -61,15 +61,14 @@ export const AIPicksPromotionalPanel: React.FC<AIPicksPromotionalPanelProps> = (
       </div>
 
       {/* Main Grid: Spotlight on Left, 3 Mini Cards on Right */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Spotlight Card (7 cols) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
         {spotlightProduct && (
           <div
             onClick={() => onSelectProduct(spotlightProduct)}
-            className="lg:col-span-7 bg-gradient-to-br from-orange-50/60 via-slate-50 to-white dark:from-slate-950 dark:via-slate-900 dark:to-slate-850 border border-orange-200/80 dark:border-orange-900/40 rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row gap-5 items-center group cursor-pointer hover:shadow-lg transition-all"
+            className="lg:col-span-7 bg-gradient-to-br from-orange-50/60 via-slate-50 to-white dark:from-slate-950 dark:via-slate-900 dark:to-slate-850 border border-orange-200/80 dark:border-orange-900/40 rounded-2xl p-3.5 sm:p-6 flex flex-col sm:flex-row gap-4 sm:gap-5 items-center group cursor-pointer hover:shadow-lg transition-all"
           >
             {/* Spotlight Image */}
-            <div className="relative w-full sm:w-64 h-56 sm:h-64 rounded-xl overflow-hidden bg-white dark:bg-slate-800 shrink-0 border border-slate-200/80 dark:border-slate-700">
+            <div className="relative w-full sm:w-56 md:w-64 h-48 sm:h-64 rounded-xl overflow-hidden bg-white dark:bg-slate-800 shrink-0 border border-slate-200/80 dark:border-slate-700">
               <img
                 src={spotlightProduct.image || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80'}
                 alt={spotlightProduct.name || 'Featured Product'}

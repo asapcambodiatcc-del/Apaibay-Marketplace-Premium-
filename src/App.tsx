@@ -132,7 +132,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-white dark:bg-[#05070b] text-slate-900 dark:text-slate-100 transition-colors flex flex-col font-sans pb-16 lg:pb-0">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-white dark:bg-[#05070b] text-slate-900 dark:text-slate-100 transition-colors flex flex-col font-sans pb-16 lg:pb-0">
       {/* Global Header */}
       <Header
         cart={cart}
@@ -161,7 +161,7 @@ export default function App() {
       />
 
       {/* Main Routed Content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-8 py-5">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-5 overflow-x-hidden">
         <Routes>
           <Route
             path="/"

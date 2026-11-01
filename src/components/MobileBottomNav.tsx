@@ -26,7 +26,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   const { t } = useLanguage();
 
   return (
-    <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-3 py-2 shadow-lg">
+    <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-2 sm:px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-lg">
       <div className="flex items-center justify-around max-w-md mx-auto">
         {/* Home */}
         <button
