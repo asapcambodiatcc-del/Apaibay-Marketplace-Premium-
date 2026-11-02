@@ -43,7 +43,7 @@ export const FeaturedCategoryGrid: React.FC<FeaturedCategoryGridProps> = ({
             <div
               key={cat.id}
               onClick={() => onSelectCategory(cat.slug)}
-              className={`group relative h-32 xs:h-36 sm:h-40 md:h-44 rounded-2xl overflow-hidden cursor-pointer shadow-xs transition-all duration-300 hover:-translate-y-1 hover:shadow-lg border ${
+              className={`group relative h-32 xs:h-36 sm:h-40 md:h-44 rounded-2xl overflow-hidden cursor-pointer shadow-xs transition-all duration-300 hover:-translate-y-1 hover:shadow-lg active:scale-[0.98] border ${
                 isSelected
                   ? 'ring-3 ring-[#ff6a00] border-[#ff6a00]'
                   : 'border-slate-200/80 dark:border-slate-800'

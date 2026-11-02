@@ -1,13 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Sparkles, ArrowRight, ShieldCheck } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
+import { Product } from '../types';
 
 interface HeroCarouselProps {
   onShopNow: (category?: string) => void;
   onExploreSale: () => void;
+  products?: Product[];
 }
 
-const SLIDES = [
+interface HeroSlide {
+  id: number;
+  tag: string;
+  title: string;
+  subtitle: string;
+  category: string;
+  bgImage: string;
+  modelImage: string;
+  badgeText: string;
+  featuredProductName?: string;
+  featuredPrice?: number;
+}
+
+const DEFAULT_SLIDES: HeroSlide[] = [
   {
     id: 1,
     tag: 'AUTUMN LUXURY',
@@ -16,7 +31,7 @@ const SLIDES = [
     category: 'fashion',
     bgImage: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1200&q=80',
     modelImage: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=600&q=80',
-    badgeText: 'FLASH SALE'
+    badgeText: 'FLASH SALE',
   },
   {
     id: 2,
@@ -26,7 +41,7 @@ const SLIDES = [
     category: 'electronics',
     bgImage: 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=1200&q=80',
     modelImage: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80',
-    badgeText: 'UP TO 60% OFF'
+    badgeText: 'UP TO 60% OFF',
   },
   {
     id: 3,
@@ -36,56 +51,119 @@ const SLIDES = [
     category: 'furniture',
     bgImage: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=1200&q=80',
     modelImage: 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&w=600&q=80',
-    badgeText: 'FREE SHIPPING'
-  }
+    badgeText: 'FREE SHIPPING',
+  },
 ];
 
-export const HeroCarousel: React.FC<HeroCarouselProps> = ({ onShopNow, onExploreSale }) => {
+export const HeroCarousel: React.FC<HeroCarouselProps> = ({
+  onShopNow,
+  onExploreSale,
+  products = [],
+}) => {
   const { t } = useLanguage();
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [countdown, setCountdown] = useState({
-    hours: 9,
-    minutes: 0,
-    seconds: 58
+  const [isPaused, setIsPaused] = useState(false);
+  const touchStartX = useRef<number | null>(null);
+
+  // Derive dynamic slides if real products are available
+  const slides = React.useMemo(() => {
+    if (!products || products.length === 0) return DEFAULT_SLIDES;
+
+    const fashionProduct = products.find((p) => p.category === 'fashion');
+    const electronicsProduct = products.find((p) => p.category === 'electronics');
+    const furnitureProduct = products.find((p) => p.category === 'furniture' || p.category === 'home-kitchen');
+
+    return [
+      {
+        ...DEFAULT_SLIDES[0],
+        featuredProductName: fashionProduct?.name,
+        featuredPrice: fashionProduct?.price,
+        modelImage: fashionProduct?.image || DEFAULT_SLIDES[0].modelImage,
+      },
+      {
+        ...DEFAULT_SLIDES[1],
+        featuredProductName: electronicsProduct?.name,
+        featuredPrice: electronicsProduct?.price,
+        modelImage: electronicsProduct?.image || DEFAULT_SLIDES[1].modelImage,
+      },
+      {
+        ...DEFAULT_SLIDES[2],
+        featuredProductName: furnitureProduct?.name,
+        featuredPrice: furnitureProduct?.price,
+        modelImage: furnitureProduct?.image || DEFAULT_SLIDES[2].modelImage,
+      },
+    ];
+  }, [products]);
+
+  // Real countdown timer based on current day ending (UTC)
+  const [countdown, setCountdown] = useState(() => {
+    const now = new Date();
+    const endOfDay = new Date();
+    endOfDay.setUTCHours(23, 59, 59, 999);
+    const diff = Math.max(0, Math.floor((endOfDay.getTime() - now.getTime()) / 1000));
+    return {
+      hours: Math.floor(diff / 3600),
+      minutes: Math.floor((diff % 3600) / 60),
+      seconds: diff % 60,
+    };
   });
 
-  // Countdown timer simulation
   useEffect(() => {
     const timer = setInterval(() => {
       setCountdown((prev) => {
-        if (prev.seconds > 0) {
-          return { ...prev, seconds: prev.seconds - 1 };
-        }
-        if (prev.minutes > 0) {
-          return { ...prev, minutes: prev.minutes - 1, seconds: 59 };
-        }
-        if (prev.hours > 0) {
-          return { hours: prev.hours - 1, minutes: 59, seconds: 59 };
-        }
-        return { hours: 9, minutes: 0, seconds: 0 };
+        if (prev.seconds > 0) return { ...prev, seconds: prev.seconds - 1 };
+        if (prev.minutes > 0) return { ...prev, minutes: prev.minutes - 1, seconds: 59 };
+        if (prev.hours > 0) return { hours: prev.hours - 1, minutes: 59, seconds: 59 };
+        return { hours: 12, minutes: 0, seconds: 0 };
       });
     }, 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Slide autoplay
+  // Slide autoplay with pause on hover
   useEffect(() => {
+    if (isPaused) return;
     const slideInterval = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % SLIDES.length);
-    }, 7000);
+      setCurrentSlide((prev) => (prev + 1) % slides.length);
+    }, 6500);
     return () => clearInterval(slideInterval);
-  }, []);
+  }, [isPaused, slides.length]);
 
-  const slide = SLIDES[currentSlide];
-
+  const slide = slides[currentSlide];
   const format2 = (num: number) => num.toString().padStart(2, '0');
 
+  // Touch swipe support
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null) return;
+    const touchEndX = e.changedTouches[0].clientX;
+    const diff = touchStartX.current - touchEndX;
+    if (Math.abs(diff) > 40) {
+      if (diff > 0) {
+        setCurrentSlide((prev) => (prev + 1) % slides.length);
+      } else {
+        setCurrentSlide((prev) => (prev - 1 + slides.length) % slides.length);
+      }
+    }
+    touchStartX.current = null;
+  };
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-full">
+    <div
+      className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-full"
+      onMouseEnter={() => setIsPaused(true)}
+      onMouseLeave={() => setIsPaused(false)}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       {/* Main Banner Slide (8 cols on desktop) */}
       <div className="lg:col-span-8 relative rounded-2xl overflow-hidden shadow-sm bg-slate-900 min-h-[300px] xs:min-h-[340px] sm:min-h-[400px] lg:min-h-[420px] flex items-center group">
         {/* Background Image with Dark & Warm Overlay */}
         <div
+          key={slide.id}
           className="absolute inset-0 bg-cover bg-center transition-all duration-700 transform scale-105"
           style={{ backgroundImage: `url(${slide.bgImage})` }}
         />
@@ -128,7 +206,7 @@ export const HeroCarousel: React.FC<HeroCarouselProps> = ({ onShopNow, onExplore
         {/* Live Flash Sale countdown box inside slide (bottom right) */}
         <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 z-20 bg-black/75 backdrop-blur-md border border-white/15 rounded-xl p-3 text-white hidden sm:block">
           <div className="text-[10px] uppercase font-bold text-amber-400 tracking-wider mb-1 flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
             {t('hero.flashSale', 'FLASH SALE')}
           </div>
           <div className="flex items-center gap-1.5 font-mono text-sm font-black">
@@ -143,7 +221,8 @@ export const HeroCarousel: React.FC<HeroCarouselProps> = ({ onShopNow, onExplore
         {/* Slide Controls */}
         <div className="hidden sm:block absolute top-1/2 -translate-y-1/2 left-3 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
-            onClick={() => setCurrentSlide((prev) => (prev - 1 + SLIDES.length) % SLIDES.length)}
+            onClick={() => setCurrentSlide((prev) => (prev - 1 + slides.length) % slides.length)}
+            aria-label="Previous slide"
             className="w-9 h-9 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-sm border border-white/20 transition-all cursor-pointer"
           >
             <ChevronLeft className="w-5 h-5" />
@@ -151,7 +230,8 @@ export const HeroCarousel: React.FC<HeroCarouselProps> = ({ onShopNow, onExplore
         </div>
         <div className="hidden sm:block absolute top-1/2 -translate-y-1/2 right-3 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
-            onClick={() => setCurrentSlide((prev) => (prev + 1) % SLIDES.length)}
+            onClick={() => setCurrentSlide((prev) => (prev + 1) % slides.length)}
+            aria-label="Next slide"
             className="w-9 h-9 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-sm border border-white/20 transition-all cursor-pointer"
           >
             <ChevronRight className="w-5 h-5" />
@@ -160,10 +240,11 @@ export const HeroCarousel: React.FC<HeroCarouselProps> = ({ onShopNow, onExplore
 
         {/* Dots indicators */}
         <div className="absolute bottom-3 left-4 sm:bottom-4 sm:left-10 z-20 flex items-center gap-1.5">
-          {SLIDES.map((_, i) => (
+          {slides.map((_, i) => (
             <button
               key={i}
               onClick={() => setCurrentSlide(i)}
+              aria-label={`Go to slide ${i + 1}`}
               className={`h-1.5 rounded-full transition-all cursor-pointer ${
                 currentSlide === i ? 'w-6 bg-[#ff6a00]' : 'w-2 bg-white/40 hover:bg-white/70'
               }`}
@@ -172,7 +253,7 @@ export const HeroCarousel: React.FC<HeroCarouselProps> = ({ onShopNow, onExplore
         </div>
       </div>
 
-      {/* Companion Right Card (4 cols on desktop - matching mockup) */}
+      {/* Companion Right Card (4 cols on desktop) */}
       <div className="hidden lg:flex lg:col-span-4 flex-col justify-between relative rounded-2xl overflow-hidden shadow-sm bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 text-white group">
         <div
           className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
@@ -194,9 +275,14 @@ export const HeroCarousel: React.FC<HeroCarouselProps> = ({ onShopNow, onExplore
           <div className="text-[11px] font-bold text-[#ff6a00] uppercase tracking-wider mb-1">
             {t('hero.featuredHighlight', 'Featured Highlight')}
           </div>
-          <h3 className="text-lg font-bold leading-snug mb-2 text-white">
-            {slide.title}
+          <h3 className="text-lg font-bold leading-snug mb-1 text-white">
+            {slide.featuredProductName || slide.title}
           </h3>
+          {slide.featuredPrice !== undefined && (
+            <div className="text-xl font-black text-[#ff6a00] mb-2">
+              ${slide.featuredPrice.toFixed(2)}
+            </div>
+          )}
           <p className="text-xs text-slate-300 mb-4 line-clamp-2">
             {t('hero.curatedDesc', 'Explore authentic merchant collections with certified quality control.')}
           </p>
@@ -213,4 +299,3 @@ export const HeroCarousel: React.FC<HeroCarouselProps> = ({ onShopNow, onExplore
     </div>
   );
 };
-

@@ -12,10 +12,12 @@ import { FlashSalesSection } from '../components/FlashSalesSection';
 import { ProductSections } from '../components/ProductSections';
 import { DealsOffersSection } from '../components/DealsOffersSection';
 import { AIPicksPromotionalPanel } from '../components/AIPicksPromotionalPanel';
+import { SellerSpotlight } from '../components/SellerSpotlight';
 import { PromotionalBanners } from '../components/PromotionalBanners';
 import { BrandShowcase } from '../components/BrandShowcase';
 import { SocialProofSection } from '../components/SocialProofSection';
 import { VideoGallerySection } from '../components/VideoGallerySection';
+import { ProductGridSkeleton } from '../components/ProductCardSkeleton';
 import { Product } from '../types';
 import { X } from 'lucide-react';
 
@@ -27,7 +29,7 @@ interface HomePageProps {
 export const HomePage: React.FC<HomePageProps> = ({ onShowToast, onOpenQuickview }) => {
   const { t, tCategory } = useLanguage();
   const navigate = useNavigate();
-  const { products } = useProducts();
+  const { products, loading } = useProducts();
   const { addToCart } = useCart();
   const { wishlist, toggleWishlist } = useWishlist();
 
@@ -41,7 +43,8 @@ export const HomePage: React.FC<HomePageProps> = ({ onShowToast, onOpenQuickview
     }
     if (
       selectedBrand &&
-      product.brand.toLowerCase() !== selectedBrand.toLowerCase()
+      product.brand.toLowerCase() !== selectedBrand.toLowerCase() &&
+      (!product.seller || product.seller.name.toLowerCase() !== selectedBrand.toLowerCase())
     ) {
       return false;
     }
@@ -84,7 +87,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onShowToast, onOpenQuickview
             )}
             {selectedBrand && (
               <span className="bg-white dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-800 text-xs">
-                {t('search.brand', 'Brand')}: <strong className="text-[#ff6a00]">{selectedBrand}</strong>
+                {t('search.brand', 'Merchant / Brand')}: <strong className="text-[#ff6a00]">{selectedBrand}</strong>
               </span>
             )}
             <span className="text-slate-500 font-normal">
@@ -118,6 +121,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onShowToast, onOpenQuickview
 
         <div className="flex-1 min-w-0">
           <HeroCarousel
+            products={products}
             onShopNow={(cat) => {
               if (cat) navigate(`/category/${cat}`);
             }}
@@ -151,15 +155,19 @@ export const HomePage: React.FC<HomePageProps> = ({ onShowToast, onOpenQuickview
         />
       </div>
 
-      {/* Tabbed Product Shelves */}
-      <ProductSections
-        products={filteredProducts}
-        wishlist={wishlist}
-        onToggleWishlist={handleToggleWishlist}
-        onAddToCart={handleAddToCart}
-        onSelectProduct={handleProductSelect}
-        selectedCategory={selectedCategory}
-      />
+      {/* Tabbed Product Shelves (AI Recommended, Trending, Daily Discover, Best Sellers, etc.) */}
+      {loading && products.length === 0 ? (
+        <ProductGridSkeleton count={5} />
+      ) : (
+        <ProductSections
+          products={filteredProducts}
+          wishlist={wishlist}
+          onToggleWishlist={handleToggleWishlist}
+          onAddToCart={handleAddToCart}
+          onSelectProduct={handleProductSelect}
+          selectedCategory={selectedCategory}
+        />
+      )}
 
       {/* Deals & Offers Section */}
       <DealsOffersSection
@@ -170,13 +178,25 @@ export const HomePage: React.FC<HomePageProps> = ({ onShowToast, onOpenQuickview
         }}
       />
 
-      {/* AI Picks & Smart Curated Panel */}
+      {/* AI Picks & Smart Curated Panel (Personalized if logged in or has wishlist) */}
       <AIPicksPromotionalPanel
         products={filteredProducts}
         wishlist={wishlist}
         onToggleWishlist={handleToggleWishlist}
         onAddToCart={handleAddToCart}
         onSelectProduct={handleProductSelect}
+      />
+
+      {/* Verified Seller Spotlight */}
+      <SellerSpotlight
+        products={products}
+        onSelectProduct={handleProductSelect}
+        onSelectSeller={(sellerName) => {
+          setSelectedBrand(sellerName);
+          const elem = document.getElementById('flash-sales-anchor');
+          elem?.scrollIntoView({ behavior: 'smooth' });
+        }}
+        onExploreSellerCenter={() => navigate('/seller')}
       />
 
       {/* Promotional Banners */}

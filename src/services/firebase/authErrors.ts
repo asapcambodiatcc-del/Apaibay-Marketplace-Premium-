@@ -36,6 +36,24 @@ export function getAuthErrorMessageKey(errorCodeOrMessage: string): string {
   ) {
     return 'auth.errorNetwork';
   }
+  if (
+    code.includes('auth/unauthorized-domain') ||
+    code.includes('unauthorized-domain')
+  ) {
+    return 'auth.errorUnauthorizedDomain';
+  }
+  if (
+    code.includes('auth/operation-not-allowed') ||
+    code.includes('operation-not-allowed')
+  ) {
+    return 'auth.errorOperationNotAllowed';
+  }
+  if (
+    code.includes('auth/popup-blocked') ||
+    code.includes('popup-blocked')
+  ) {
+    return 'auth.errorPopupBlocked';
+  }
   if (code.includes('auth/popup-closed-by-user')) {
     return 'auth.errorGeneral';
   }
