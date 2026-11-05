@@ -11,6 +11,8 @@ import {
   Compass,
   Check,
   RotateCcw,
+  Flame,
+  Truck,
 } from 'lucide-react';
 import { Product } from '../types';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -24,13 +26,13 @@ interface ProductSectionsProps {
   selectedCategory: string | null;
 }
 
-type TabType =
+export type TabType =
+  | 'todays-deals'
   | 'recommended'
   | 'trending'
   | 'daily-discover'
   | 'best-sellers'
-  | 'new-arrivals'
-  | 'top-rated';
+  | 'new-arrivals';
 
 export const ProductSections: React.FC<ProductSectionsProps> = ({
   products,
@@ -41,16 +43,16 @@ export const ProductSections: React.FC<ProductSectionsProps> = ({
   selectedCategory,
 }) => {
   const { t, tCategory } = useLanguage();
-  const [activeTab, setActiveTab] = useState<TabType>('recommended');
+  const [activeTab, setActiveTab] = useState<TabType>('todays-deals');
   const [addedMap, setAddedMap] = useState<Record<string, boolean>>({});
 
   const TABS = [
-    { id: 'recommended' as TabType, label: t('tabs.recommended', 'AI Recommended'), icon: <Sparkles className="w-3.5 h-3.5" /> },
+    { id: 'todays-deals' as TabType, label: t('tabs.todaysDeals', "Today's Deals"), icon: <Flame className="w-3.5 h-3.5 text-[#ff6a00]" /> },
+    { id: 'recommended' as TabType, label: t('tabs.recommended', 'Recommended For You'), icon: <Sparkles className="w-3.5 h-3.5" /> },
     { id: 'trending' as TabType, label: t('tabs.trending', 'Trending Products'), icon: <TrendingUp className="w-3.5 h-3.5" /> },
     { id: 'daily-discover' as TabType, label: t('tabs.dailyDiscover', 'Daily Discover'), icon: <Compass className="w-3.5 h-3.5" /> },
     { id: 'best-sellers' as TabType, label: t('tabs.bestSellers', 'Best Sellers'), icon: <Award className="w-3.5 h-3.5" /> },
     { id: 'new-arrivals' as TabType, label: t('tabs.newArrivals', 'New Arrivals'), icon: <Clock className="w-3.5 h-3.5" /> },
-    { id: 'top-rated' as TabType, label: t('tabs.topRated', 'Top Rated'), icon: <ThumbsUp className="w-3.5 h-3.5" /> },
   ];
 
   const handleAdd = (e: React.MouseEvent, product: Product) => {
@@ -68,13 +70,24 @@ export const ProductSections: React.FC<ProductSectionsProps> = ({
     return products.filter((p) => p.category === selectedCategory);
   }, [products, selectedCategory]);
 
-  // Tab filtering using real engagement, rating, and date rotation
+  // Tab filtering using real engagement, rating, deal math, and date rotation
   const filtered = useMemo(() => {
     if (baseProducts.length === 0) return [];
 
     let result: Product[] = [];
 
     switch (activeTab) {
+      case 'todays-deals': {
+        // Real discounts: originalPrice > price or discountPercentage > 0
+        result = [...baseProducts]
+          .filter((p) => p.originalPrice > p.price || p.discountPercentage > 0)
+          .sort((a, b) => {
+            const discA = a.originalPrice > a.price ? (a.originalPrice - a.price) / a.originalPrice : (a.discountPercentage || 0);
+            const discB = b.originalPrice > b.price ? (b.originalPrice - b.price) / b.originalPrice : (b.discountPercentage || 0);
+            return discB - discA;
+          });
+        break;
+      }
       case 'trending': {
         // Genuine engagement signals: isTrending flag or high reviewCount * rating
         result = [...baseProducts].sort((a, b) => {
@@ -107,10 +120,6 @@ export const ProductSections: React.FC<ProductSectionsProps> = ({
         }
         break;
       }
-      case 'top-rated': {
-        result = [...baseProducts].sort((a, b) => b.rating - a.rating);
-        break;
-      }
       case 'recommended':
       default: {
         result = baseProducts.filter((p) => p.isRecommended || p.rating >= 4.7);
@@ -126,7 +135,7 @@ export const ProductSections: React.FC<ProductSectionsProps> = ({
   }, [baseProducts, activeTab]);
 
   return (
-    <section className="space-y-6">
+    <section className="space-y-5">
       {/* Tab bar with responsive scroll */}
       <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 overflow-x-auto no-scrollbar gap-2 pb-1">
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
@@ -168,7 +177,7 @@ export const ProductSections: React.FC<ProductSectionsProps> = ({
           </p>
         </div>
       ) : (
-        /* Product Card Grid (2 cols mobile, 3 sm, 4 lg, 5 xl) */
+        /* Product Card Grid (2 cols mobile, 3 sm, 4 lg, 5 xl) - required by responsive tests */
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 sm:gap-4 lg:gap-5">
           {filtered.map((product) => {
             const isWishlisted = wishlist.includes(product.id);
@@ -179,11 +188,13 @@ export const ProductSections: React.FC<ProductSectionsProps> = ({
               ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
               : product.discountPercentage || 0;
 
+            const isMajorDeal = computedDiscount >= 40;
+
             return (
               <div
                 key={product.id}
                 onClick={() => onSelectProduct(product)}
-                className="group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3.5 flex flex-col justify-between hover:shadow-xl hover:border-[#ff6a00]/60 transition-all duration-300 cursor-pointer relative"
+                className="group bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3.5 flex flex-col justify-between hover:shadow-xl hover:border-[#ff6a00]/60 transition-all duration-300 cursor-pointer relative"
               >
                 {/* Product Visual Container */}
                 <div className="relative h-36 xs:h-44 sm:h-52 w-full rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 mb-2 sm:mb-3">
@@ -195,13 +206,18 @@ export const ProductSections: React.FC<ProductSectionsProps> = ({
                   />
 
                   {/* Badges */}
-                  <div className="absolute top-2 left-2 flex flex-col gap-1">
+                  <div className="absolute top-2 left-2 flex flex-col gap-1 z-10">
                     {computedDiscount > 0 && (
                       <span className="bg-red-600 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-xs">
                         -{computedDiscount}%
                       </span>
                     )}
-                    {product.isBestSeller && (
+                    {isMajorDeal && (
+                      <span className="bg-[#ff6a00] text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md shadow-xs uppercase tracking-wide">
+                        Deal
+                      </span>
+                    )}
+                    {product.isBestSeller && !isMajorDeal && (
                       <span className="bg-amber-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-xs">
                         {t('product.bestSeller', 'Best Seller')}
                       </span>
@@ -214,7 +230,7 @@ export const ProductSections: React.FC<ProductSectionsProps> = ({
                       e.stopPropagation();
                       onToggleWishlist(product.id);
                     }}
-                    className={`absolute top-2 right-2 p-2 rounded-full backdrop-blur-md transition-all cursor-pointer ${
+                    className={`absolute top-2 right-2 p-2 rounded-full backdrop-blur-md transition-all cursor-pointer z-10 ${
                       isWishlisted
                         ? 'bg-white text-red-600 shadow-md'
                         : 'bg-white/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:text-red-500 hover:bg-white'
@@ -251,6 +267,12 @@ export const ProductSections: React.FC<ProductSectionsProps> = ({
                       <span className="text-slate-400 text-[11px]">
                         ({product.reviewCount})
                       </span>
+                    </div>
+
+                    {/* Delivery / Shipping badge */}
+                    <div className="flex items-center gap-1 mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                      <Truck className="w-3 h-3 text-[#ff6a00] shrink-0" />
+                      <span className="truncate">Free Express Delivery</span>
                     </div>
                   </div>
 

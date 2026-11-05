@@ -192,6 +192,7 @@ export interface Seller {
   reviewedBy?: string;
   rejectionReason?: string;
   commissionRate?: number;
+  payoutStatus?: 'unavailable' | 'not_configured';
   contactInfo?: {
     email?: string;
     phone?: string;

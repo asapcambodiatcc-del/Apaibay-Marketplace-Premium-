@@ -7,6 +7,7 @@ import { useWishlist } from '../context/WishlistContext';
 import { CategorySidebar } from '../components/CategorySidebar';
 import { HeroCarousel } from '../components/HeroCarousel';
 import { TrustStrip } from '../components/TrustStrip';
+import { CategoryMerchandisingQuads } from '../components/CategoryMerchandisingQuads';
 import { FeaturedCategoryGrid } from '../components/FeaturedCategoryGrid';
 import { FlashSalesSection } from '../components/FlashSalesSection';
 import { ProductSections } from '../components/ProductSections';
@@ -135,6 +136,13 @@ export const HomePage: React.FC<HomePageProps> = ({ onShowToast, onOpenQuickview
 
       {/* Trust & Service Strip */}
       <TrustStrip />
+
+      {/* Amazon-Inspired Multi-Category Merchandising Quads */}
+      <CategoryMerchandisingQuads
+        onSelectCategory={(cat) => {
+          navigate(`/category/${cat}`);
+        }}
+      />
 
       {/* Featured Category Grid */}
       <FeaturedCategoryGrid

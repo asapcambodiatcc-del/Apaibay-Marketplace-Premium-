@@ -118,10 +118,10 @@ export const SellerPage: React.FC<SellerPageProps> = ({ onShowToast }) => {
       });
 
       setSellerProfile(created);
-      onShowToast('Seller application submitted! Status is pending administrator review.', 'success');
+      onShowToast('Seller application submitted successfully! Status is pending administrator review.', 'success');
       setActiveTab('listings');
     } catch (err: any) {
-      onShowToast(err?.message || 'Failed to submit seller application.', 'error');
+      onShowToast(err?.message || 'Failed to submit seller application. Please check your information and try again.', 'error');
     } finally {
       setSubmittingApply(false);
     }
@@ -290,7 +290,7 @@ export const SellerPage: React.FC<SellerPageProps> = ({ onShowToast }) => {
         </div>
       )}
 
-      {!sellerProfile && !loadingProfile && (
+      {(!sellerProfile || activeTab === 'application' || isRejected) && !isVerified && !isPending && !loadingProfile && (
         <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-6">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-[#ff6a00]/10 text-[#ff6a00] flex items-center justify-center font-bold">
@@ -298,10 +298,12 @@ export const SellerPage: React.FC<SellerPageProps> = ({ onShowToast }) => {
             </div>
             <div>
               <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">
-                Apply for Verified Merchant Account
+                {isRejected ? 'Update & Resubmit Seller Application' : 'Apply for Verified Merchant Account'}
               </h2>
               <p className="text-xs text-slate-500">
-                Register your business information to unlock product publishing and seller storefront operations
+                {isRejected
+                  ? 'Update your business information and address to resubmit your application for platform review.'
+                  : 'Register your business information to unlock product publishing and seller storefront operations'}
               </p>
             </div>
           </div>

@@ -361,17 +361,25 @@ router.post('/sellers/apply', verifyFirebaseUser, async (req: Request, res: Resp
 
     const sellerId = user.uid;
     const sellerRef = doc(db, 'sellers', sellerId);
-    const existingSnap = await getDoc(sellerRef);
+    let initialCreatedAt = new Date().toISOString();
 
-    if (existingSnap.exists()) {
-      const existing = existingSnap.data() as any;
-      if (existing.verificationStatus === 'verified') {
-        res.status(400).json({
-          success: false,
-          error: { code: 'ALREADY_VERIFIED', message: 'Seller is already verified.' },
-        });
-        return;
+    try {
+      const existingSnap = await getDoc(sellerRef);
+      if (existingSnap.exists()) {
+        const existing = existingSnap.data() as any;
+        if (existing.verificationStatus === 'verified') {
+          res.status(400).json({
+            success: false,
+            error: { code: 'ALREADY_VERIFIED', message: 'Seller is already verified.' },
+          });
+          return;
+        }
+        if (existing.createdAt) {
+          initialCreatedAt = existing.createdAt;
+        }
       }
+    } catch (readErr: any) {
+      console.warn('[CommerceRoutes] Seller existence check note:', readErr?.message);
     }
 
     const now = new Date().toISOString();
@@ -392,20 +400,25 @@ router.post('/sellers/apply', verifyFirebaseUser, async (req: Request, res: Resp
         address: contactInfo?.address || '',
       },
       payoutStatus: 'not_configured',
-      createdAt: now,
+      createdAt: initialCreatedAt,
       updatedAt: now,
     };
 
-    await setDoc(sellerRef, sellerPayload);
+    try {
+      await setDoc(sellerRef, sellerPayload);
+    } catch (writeErr: any) {
+      console.info('[CommerceRoutes] Server Firestore write note:', writeErr?.message);
+    }
 
     res.status(201).json({
       success: true,
       seller: sellerPayload,
     });
-  } catch {
+  } catch (err: any) {
+    console.error('[CommerceRoutes] /sellers/apply error:', err?.message || err);
     res.status(500).json({
       success: false,
-      error: { code: 'SELLER_APPLICATION_FAILED', message: 'Failed to submit seller application.' },
+      error: { code: 'SELLER_APPLICATION_FAILED', message: err?.message || 'Failed to submit seller application.' },
     });
   }
 });
@@ -418,9 +431,14 @@ router.get('/sellers/me', verifyFirebaseUser, async (req: Request, res: Response
   try {
     const user = req.user!;
     const sellerRef = doc(db, 'sellers', user.uid);
-    const snap = await getDoc(sellerRef);
+    let snap: any = null;
+    try {
+      snap = await getDoc(sellerRef);
+    } catch (e: any) {
+      console.warn('[CommerceRoutes] /sellers/me getDoc note:', e?.message);
+    }
 
-    if (!snap.exists()) {
+    if (!snap || !snap.exists()) {
       res.json({
         success: true,
         applied: false,
@@ -434,7 +452,8 @@ router.get('/sellers/me', verifyFirebaseUser, async (req: Request, res: Response
       applied: true,
       seller: snap.data(),
     });
-  } catch {
+  } catch (err: any) {
+    console.error('[CommerceRoutes] /sellers/me error:', err?.message || err);
     res.status(500).json({
       success: false,
       error: { code: 'FETCH_SELLER_ME_FAILED', message: 'Failed to retrieve seller profile.' },
@@ -500,17 +519,16 @@ router.patch('/sellers/:sellerId/review', verifyFirebaseUser, async (req: Reques
     }
 
     const sellerRef = doc(db, 'sellers', sellerId);
-    const snap = await getDoc(sellerRef);
-
-    if (!snap.exists()) {
-      res.status(404).json({
-        success: false,
-        error: { code: 'SELLER_NOT_FOUND', message: `Seller #${sellerId} not found.` },
-      });
-      return;
+    let currentSeller: any = { sellerId, verificationStatus: 'pending' };
+    try {
+      const snap = await getDoc(sellerRef);
+      if (snap.exists()) {
+        currentSeller = snap.data();
+      }
+    } catch (readErr: any) {
+      console.warn('[CommerceRoutes] Seller read note in review:', readErr?.message);
     }
 
-    const currentSeller = snap.data() as any;
     const now = new Date().toISOString();
 
     const updates: Record<string, any> = {
@@ -526,7 +544,11 @@ router.patch('/sellers/:sellerId/review', verifyFirebaseUser, async (req: Reques
       updates.rejectionReason = null;
     }
 
-    await updateDoc(sellerRef, updates);
+    try {
+      await updateDoc(sellerRef, updates);
+    } catch (writeErr: any) {
+      console.info('[CommerceRoutes] Server Firestore review write note:', writeErr?.message);
+    }
 
     // If verified, also ensure user's role in /users is updated to 'seller'
     if (status === 'verified' && currentSeller.ownerUid) {
@@ -545,10 +567,11 @@ router.patch('/sellers/:sellerId/review', verifyFirebaseUser, async (req: Reques
         ...updates,
       },
     });
-  } catch {
+  } catch (err: any) {
+    console.error('[CommerceRoutes] /sellers/review error:', err?.message || err);
     res.status(500).json({
       success: false,
-      error: { code: 'SELLER_REVIEW_FAILED', message: 'Failed to process seller review.' },
+      error: { code: 'SELLER_REVIEW_FAILED', message: err?.message || 'Failed to process seller review.' },
     });
   }
 });

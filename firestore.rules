@@ -71,7 +71,15 @@ service cloud.firestore {
       );
       allow update: if (
         isAdmin() ||
-        (isSignedIn() && resource.data.ownerUid == request.auth.uid && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['verificationStatus', 'ownerUid', 'reviewedAt', 'reviewedBy']))
+        (
+          isSignedIn() &&
+          resource.data.ownerUid == request.auth.uid &&
+          request.resource.data.ownerUid == request.auth.uid &&
+          (
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['verificationStatus', 'ownerUid', 'reviewedAt', 'reviewedBy']) ||
+            (request.resource.data.verificationStatus == 'pending' && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ownerUid', 'reviewedAt', 'reviewedBy']))
+          )
+        )
       );
       allow delete: if isAdmin();
     }
