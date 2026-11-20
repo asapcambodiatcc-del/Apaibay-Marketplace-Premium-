@@ -290,13 +290,95 @@
         "netAmount": { "type": "number" },
         "netAmountCents": { "type": "number" },
         "type": { "type": "string", "enum": ["sale", "refund_adjustment", "cancellation_adjustment"] },
-        "status": { "type": "string", "enum": ["calculated", "held", "settled"] },
-        "payoutStatus": { "type": "string", "enum": ["unavailable", "not_configured"] },
+        "status": { "type": "string", "enum": ["calculated", "pending_settlement", "held", "available", "payout_requested", "settled", "cancelled"] },
+        "payoutStatus": { "type": "string", "enum": ["unavailable", "not_configured", "pending", "available", "held", "paid_out"] },
         "isPlatformOwned": { "type": "boolean" },
         "relatedLedgerId": { "type": "string", "maxLength": 128 },
+        "deliveredAt": { "type": "string", "maxLength": 50 },
+        "settlementEligibleAt": { "type": "string", "maxLength": 50 },
+        "settledAt": { "type": "string", "maxLength": 50 },
+        "disputeHoldId": { "type": "string", "maxLength": 128 },
+        "payoutId": { "type": "string", "maxLength": 128 },
         "createdAt": { "type": "string", "maxLength": 50 }
       },
       "required": ["id", "orderId", "sellerId", "productId", "type", "status", "createdAt"]
+    },
+    "SellerPayout": {
+      "title": "SellerPayout",
+      "description": "Seller settlement withdrawal request record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "sellerId": { "type": "string", "maxLength": 128 },
+        "sellerStoreName": { "type": "string", "maxLength": 150 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "ownerEmail": { "type": "string", "maxLength": 256 },
+        "amount": { "type": "number" },
+        "amountCents": { "type": "number" },
+        "currency": { "type": "string", "maxLength": 10 },
+        "status": { "type": "string", "enum": ["pending", "under_review", "held", "approved", "completed", "rejected", "failed"] },
+        "rejectionReason": { "type": "string", "maxLength": 500 },
+        "failureReason": { "type": "string", "maxLength": 500 },
+        "adminNotes": { "type": "string", "maxLength": 500 },
+        "disbursementReference": { "type": "string", "maxLength": 100 },
+        "requestedAt": { "type": "string", "maxLength": 50 },
+        "reviewedBy": { "type": "string", "maxLength": 128 },
+        "reviewedAt": { "type": "string", "maxLength": 50 },
+        "providerConfirmedBy": { "type": "string", "maxLength": 128 },
+        "providerConfirmedAt": { "type": "string", "maxLength": 50 },
+        "completedAt": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "sellerId", "amount", "status", "requestedAt"]
+    },
+    "SellerKyc": {
+      "title": "SellerKyc",
+      "description": "Private seller KYC verification record isolated from public storefront collection",
+      "type": "object",
+      "properties": {
+        "sellerId": { "type": "string", "maxLength": 128 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "profileType": { "type": "string", "enum": ["individual", "registered_business", "enterprise"] },
+        "legalFullName": { "type": "string", "maxLength": 150 },
+        "shopName": { "type": "string", "maxLength": 150 },
+        "countryOfRegistration": { "type": "string", "maxLength": 10 },
+        "residentialOrBusinessAddress": { "type": "string", "maxLength": 300 },
+        "maskedPhone": { "type": "string", "maxLength": 30 },
+        "phoneVerificationStatus": { "type": "string", "enum": ["unverified", "pending", "verified", "rejected"] },
+        "identityDocumentType": { "type": "string", "enum": ["national_id", "passport", "drivers_license", "business_registration"] },
+        "maskedDocumentNumber": { "type": "string", "maxLength": 30 },
+        "identityVerificationStatus": { "type": "string", "enum": ["unverified", "pending", "verified", "rejected"] },
+        "payoutOwnershipVerificationStatus": { "type": "string", "enum": ["unverified", "pending", "verified", "rejected"] },
+        "kycStatus": { "type": "string", "enum": ["NOT_SUBMITTED", "PENDING_REVIEW", "UNDER_REVIEW", "VERIFIED", "REJECTED", "EXPIRED", "SUSPENDED"] },
+        "submittedAt": { "type": "string", "maxLength": 50 },
+        "reviewedAt": { "type": "string", "maxLength": 50 },
+        "reviewedByUid": { "type": "string", "maxLength": 128 },
+        "reviewedByEmail": { "type": "string", "maxLength": 256 },
+        "rejectionReason": { "type": "string", "maxLength": 500 },
+        "actionRequiredMessage": { "type": "string", "maxLength": 500 },
+        "kycExpiresAt": { "type": "string", "maxLength": 50 },
+        "retentionPolicyDays": { "type": "number" },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["sellerId", "ownerUid", "legalFullName", "shopName", "kycStatus", "createdAt"]
+    },
+    "KycHistoryEvent": {
+      "title": "KycHistoryEvent",
+      "description": "Immutable KYC verification and private document access audit trail",
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string", "maxLength": 128 },
+        "sellerId": { "type": "string", "maxLength": 128 },
+        "action": { "type": "string", "maxLength": 50 },
+        "previousStatus": { "type": "string", "maxLength": 50 },
+        "newStatus": { "type": "string", "maxLength": 50 },
+        "actorUid": { "type": "string", "maxLength": 128 },
+        "actorEmail": { "type": "string", "maxLength": 256 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "timestamp": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["eventId", "sellerId", "action", "newStatus", "actorUid", "timestamp"]
     }
   },
   "firestore": {
@@ -314,7 +396,15 @@
     },
     "/sellers/{sellerId}": {
       "schema": "Seller",
-      "description": "Storefront merchant profile and details"
+      "description": "Storefront merchant profile and non-sensitive verification summary"
+    },
+    "/seller_kyc/{sellerId}": {
+      "schema": "SellerKyc",
+      "description": "Private KYC verification submissions and private document metadata"
+    },
+    "/seller_kyc/{sellerId}/history/{eventId}": {
+      "schema": "KycHistoryEvent",
+      "description": "Immutable KYC review and document access history"
     },
     "/orders/{orderId}": {
       "schema": "Order",
@@ -364,6 +454,10 @@
     "/sellerLedger/{ledgerId}": {
       "schema": "SellerLedger",
       "description": "Immutable ledger tracking commissions, seller net earnings, and refund adjustments"
+    },
+    "/seller_payouts/{payoutId}": {
+      "schema": "SellerPayout",
+      "description": "Authoritative seller withdrawal requests and disbursement status"
     }
   }
 }

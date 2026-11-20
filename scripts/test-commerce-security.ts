@@ -65,9 +65,12 @@ async function runVerificationSuite() {
   const expiredRes = await validateFirebaseIdToken(expiredToken);
   assert(expiredRes === null, 'Expired JWT token is rejected');
 
-  // Role resolution for bootstrap admin
-  const adminRoles = await resolveUserRoles('admin-uid', 'asapcambodia.tcc@gmail.com');
-  assert(adminRoles.isAdmin === true && adminRoles.role === 'admin', 'Bootstrap admin email resolves to admin role');
+  // Role resolution for bootstrap admin requires verified email
+  const adminRoles = await resolveUserRoles('admin-uid', 'asapcambodia.tcc@gmail.com', true);
+  assert(adminRoles.isAdmin === true && adminRoles.role === 'admin', 'Verified bootstrap admin email resolves to admin role');
+
+  const unverifiedBootstrapRoles = await resolveUserRoles('admin-uid', 'asapcambodia.tcc@gmail.com', false);
+  assert(unverifiedBootstrapRoles.isAdmin === false && unverifiedBootstrapRoles.role === 'customer', 'Unverified bootstrap admin email is rejected');
 
   // Role resolution for ordinary customer
   const customerRoles = await resolveUserRoles('cust-uid-1', 'customer@example.com');

@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { db, doc, getDoc, firebaseConfig } from '../repositories/serverFirestore';
-import { AuthenticatedUser, BOOTSTRAP_ADMIN_EMAIL } from './roles';
+import { db, doc, getDoc, firebaseConfig, getAdminAuth } from '../repositories/serverFirestore';
+import { AuthenticatedUser, UserRole, CanonicalRole, AdminPermission, BOOTSTRAP_ADMIN_EMAIL, hasPermission, normalizeRole } from './roles';
 
 // Extend Express Request interface
 declare global {
@@ -11,54 +11,47 @@ declare global {
   }
 }
 
-interface IdentityToolkitUserResponse {
-  users?: Array<{
-    localId: string;
-    email?: string;
-    emailVerified?: boolean;
-    displayName?: string;
-  }>;
-  error?: {
-    code: number;
-    message: string;
-  };
-}
-
 /**
- * Validates a Firebase ID token via Google's Identity Toolkit API and claims inspection.
+ * Cryptographically verifies a Firebase ID token using Firebase Admin Auth SDK.
+ * Fails closed (returns null) on forged signatures, unsigned JWTs, revoked tokens,
+ * wrong issuer/audience, expired tokens, or verification errors.
  */
-export async function validateFirebaseIdToken(token: string): Promise<{ uid: string; email?: string; emailVerified?: boolean } | null> {
+export async function validateFirebaseIdToken(
+  token: string
+): Promise<{ uid: string; email?: string; emailVerified: boolean } | null> {
   if (!token || typeof token !== 'string') {
     return null;
   }
 
-  // 1. Basic JWT structure validation
+  // 1. Structural JWT validation
   const parts = token.split('.');
-  if (parts.length !== 3) {
+  if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) {
     return null;
   }
 
+  let header: any;
   let payload: any;
   try {
-    const rawPayload = Buffer.from(parts[1], 'base64url').toString('utf8');
-    payload = JSON.parse(rawPayload);
+    header = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
+    payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
   } catch {
     return null;
   }
 
-  // 2. Validate token claims
+  // Reject unsigned ("alg: none") or symmetric HMAC tokens immediately
+  if (!header || typeof header.alg !== 'string' || header.alg.toUpperCase() !== 'RS256') {
+    return null;
+  }
+
+  // 2. Pre-check basic claims before signature verification
   const now = Math.floor(Date.now() / 1000);
-  if (!payload.exp || payload.exp < now) {
-    return null; // Expired
+  if (!payload || typeof payload.exp !== 'number' || payload.exp < now) {
+    return null;
   }
 
   const expectedIssuer = `https://securetoken.google.com/${firebaseConfig.projectId}`;
-  if (payload.iss !== expectedIssuer) {
-    return null; // Forged issuer
-  }
-
-  if (payload.aud !== firebaseConfig.projectId) {
-    return null; // Audience mismatch
+  if (payload.iss !== expectedIssuer || payload.aud !== firebaseConfig.projectId) {
+    return null;
   }
 
   const tokenUid = payload.sub || payload.user_id;
@@ -66,87 +59,150 @@ export async function validateFirebaseIdToken(token: string): Promise<{ uid: str
     return null;
   }
 
-  // 3. Verify authenticity with Google Identity Toolkit REST API
+  // 3. Cryptographic verification & revocation check via Firebase Admin Auth SDK
+  // NEVER fall back to trusting unverified JWT claims on error.
   try {
-    const response = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${firebaseConfig.apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken: token }),
-      }
-    );
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const data = (await response.json()) as IdentityToolkitUserResponse;
-    const user = data.users?.[0];
-    if (!user || user.localId !== tokenUid) {
+    const decoded = await getAdminAuth().verifyIdToken(token, true);
+    if (!decoded || !decoded.uid || decoded.uid !== tokenUid) {
       return null;
     }
 
     return {
-      uid: user.localId,
-      email: user.email || payload.email,
-      emailVerified: user.emailVerified ?? payload.email_verified,
+      uid: decoded.uid,
+      email: decoded.email,
+      emailVerified: decoded.email_verified === true,
     };
   } catch {
-    // If external call is blocked by network sandbox, but JWT was checked with claims:
-    return {
-      uid: tokenUid,
-      email: payload.email,
-      emailVerified: payload.email_verified,
-    };
+    return null;
   }
 }
 
 /**
  * Resolves user roles server-side from Firestore authority.
  */
-export async function resolveUserRoles(uid: string, email?: string): Promise<{ role: 'customer' | 'seller' | 'admin'; isAdmin: boolean; isSeller: boolean; sellerId?: string }> {
-  // Check Admin authority: bootstrap email OR /admins/{uid} collection
-  const isBootstrapAdmin = Boolean(email && email.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL.toLowerCase());
-  let isAdminDoc = false;
+export async function resolveUserRoles(uid: string, email?: string, emailVerified?: boolean): Promise<{
+  role: UserRole;
+  canonicalRole?: CanonicalRole;
+  isAdmin: boolean;
+  isSuperAdmin?: boolean;
+  isFinanceManager?: boolean;
+  isSupportStaff?: boolean;
+  isSeller: boolean;
+  isCustomer?: boolean;
+  sellerId?: string;
+  accountStatus?: 'active' | 'suspended' | 'pending';
+}> {
+  // Check account suspension first in /users/{uid}
+  const userSnap = await getDoc(doc(db, 'users', uid));
+  const userData = userSnap.exists() ? userSnap.data() : null;
+  const rawStatus = typeof userData?.status === 'string' ? userData.status.toLowerCase().trim() : 'active';
+  const accountStatus: 'active' | 'suspended' | 'pending' =
+    rawStatus === 'suspended' ? 'suspended' : rawStatus === 'pending' ? 'pending' : 'active';
 
-  try {
-    const adminSnap = await getDoc(doc(db, 'admins', uid));
-    if (adminSnap.exists()) {
-      isAdminDoc = true;
-    }
-  } catch {
-    // Non-blocking
+  if (accountStatus === 'suspended') {
+    return {
+      role: 'customer',
+      canonicalRole: 'CUSTOMER',
+      isAdmin: false,
+      isSuperAdmin: false,
+      isFinanceManager: false,
+      isSupportStaff: false,
+      isSeller: false,
+      isCustomer: false,
+      accountStatus: 'suspended',
+    };
   }
 
-  if (isBootstrapAdmin || isAdminDoc) {
+  // Check Admin authority: Firestore database document in /admins/{uid} takes precedence
+  let adminDocData: any = null;
+
+  const adminSnap = await getDoc(doc(db, 'admins', uid));
+  if (adminSnap.exists()) {
+    adminDocData = adminSnap.data();
+  }
+
+  // 1. Authoritative database record in /admins/{uid} (STRICTLY requires verified email)
+  if (adminDocData && emailVerified === true) {
+    const assignedRole = normalizeRole(adminDocData.role || 'ADMIN');
+    const isSuper = assignedRole === 'SUPER_ADMIN';
+    const isFin = assignedRole === 'FINANCE_MANAGER' || isSuper;
+    const isSupp = assignedRole === 'SUPPORT_STAFF' || assignedRole === 'ADMIN' || isSuper;
+    const isAdm = true; // Any administrative user has isAdmin: true for baseline route access (specific actions gated by hasPermission)
+
+    return {
+      role: isSuper ? 'SUPER_ADMIN' : 'admin',
+      canonicalRole: assignedRole,
+      isAdmin: isAdm,
+      isSuperAdmin: isSuper,
+      isFinanceManager: isFin,
+      isSupportStaff: isSupp,
+      isSeller: false,
+      isCustomer: false,
+      accountStatus,
+    };
+  }
+
+  // 2. Verified root Super Admin bootstrap identity
+  const isBootstrapEmail = Boolean(email && email.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL.toLowerCase());
+  // CRITICAL SECURITY GATE: Bootstrap admin MUST have emailVerified === true
+  const isVerifiedBootstrap = isBootstrapEmail && emailVerified === true;
+
+  if (isVerifiedBootstrap) {
     return {
       role: 'admin',
+      canonicalRole: 'SUPER_ADMIN',
       isAdmin: true,
+      isSuperAdmin: true,
+      isFinanceManager: true,
+      isSupportStaff: true,
       isSeller: false,
+      isCustomer: false,
+      accountStatus,
     };
   }
 
   // Check Seller authority: /sellers/{sellerId} where ownerUid == uid
-  try {
-    const sellerSnap = await getDoc(doc(db, 'sellers', uid));
-    if (sellerSnap.exists()) {
-      return {
-        role: 'seller',
-        isAdmin: false,
-        isSeller: true,
-        sellerId: uid,
-      };
-    }
-  } catch {
-    // Non-blocking
+  const sellerSnap = await getDoc(doc(db, 'sellers', uid));
+  if (sellerSnap.exists()) {
+    return {
+      role: 'seller',
+      canonicalRole: 'SELLER',
+      isAdmin: false,
+      isSeller: true,
+      isCustomer: false,
+      sellerId: uid,
+      accountStatus,
+    };
   }
 
   // Default customer role
   return {
     role: 'customer',
+    canonicalRole: 'CUSTOMER',
     isAdmin: false,
     isSeller: false,
+    isCustomer: true,
+    accountStatus,
+  };
+}
+
+/**
+ * Express Middleware: requirePermission
+ * Validates that authenticated user holds the required specific admin permission.
+ */
+export function requirePermission(permission: AdminPermission) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!req.user || !hasPermission(req.user, permission)) {
+      res.status(403).json({
+        success: false,
+        error: {
+          code: 'FORBIDDEN_PERMISSION',
+          message: `Administrative clearance required: '${permission}'.`,
+        },
+      });
+      return;
+    }
+    next();
   };
 }
 
@@ -204,16 +260,24 @@ export async function verifyFirebaseUser(req: Request, res: Response, next: Next
       return;
     }
 
-    const { role, isAdmin, isSeller, sellerId } = await resolveUserRoles(validated.uid, validated.email);
+    const resolved = await resolveUserRoles(validated.uid, validated.email, validated.emailVerified);
+
+    if (resolved.accountStatus === 'suspended') {
+      res.status(403).json({
+        success: false,
+        error: {
+          code: 'ACCOUNT_SUSPENDED',
+          message: 'Your account has been suspended. Please contact marketplace support.',
+        },
+      });
+      return;
+    }
 
     req.user = {
       uid: validated.uid,
       email: validated.email,
       emailVerified: validated.emailVerified,
-      role,
-      isAdmin,
-      isSeller,
-      sellerId,
+      ...resolved,
     };
 
     next();
@@ -249,16 +313,15 @@ export async function optionalFirebaseUser(req: Request, res: Response, next: Ne
       try {
         const validated = await validateFirebaseIdToken(token);
         if (validated) {
-          const { role, isAdmin, isSeller, sellerId } = await resolveUserRoles(validated.uid, validated.email);
-          req.user = {
-            uid: validated.uid,
-            email: validated.email,
-            emailVerified: validated.emailVerified,
-            role,
-            isAdmin,
-            isSeller,
-            sellerId,
-          };
+          const resolved = await resolveUserRoles(validated.uid, validated.email, validated.emailVerified);
+          if (resolved.accountStatus !== 'suspended') {
+            req.user = {
+              uid: validated.uid,
+              email: validated.email,
+              emailVerified: validated.emailVerified,
+              ...resolved,
+            };
+          }
         }
       } catch {
         // Continue unauthenticated

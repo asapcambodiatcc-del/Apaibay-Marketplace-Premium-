@@ -119,8 +119,15 @@ export const OrdersPage: React.FC = () => {
                   </div>
                   <div>
                     <div className="text-slate-400">Total</div>
-                    <div className="font-extrabold text-[#ff6a00] text-sm">
-                      ${order.total.toFixed(2)}
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-extrabold text-[#ff6a00] text-sm">
+                        ${order.total.toFixed(2)}
+                      </span>
+                      {order.paymentMethod === 'crypto' && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                          {order.cryptoCurrency || 'Crypto'}
+                        </span>
+                      )}
                     </div>
                   </div>
                   {getStatusBadge(order.status)}

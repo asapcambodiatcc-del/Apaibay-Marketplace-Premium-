@@ -1,0 +1,15 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Private KYC document path: strictly backend Admin Storage SDK access only.
+    // Direct client Storage uploads, overwrites, and downloads are disabled.
+    match /kyc_documents/{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // Global deny-by-default fallback for all Firebase Storage paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

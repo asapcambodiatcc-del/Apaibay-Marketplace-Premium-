@@ -208,7 +208,7 @@ export default function App() {
           <Route
             path="/seller"
             element={
-              <ProtectedRoute requiredRole="seller">
+              <ProtectedRoute requiredRole="customer">
                 <SellerPage onShowToast={addToast} />
               </ProtectedRoute>
             }

@@ -240,6 +240,89 @@ export const OrderDetailPage: React.FC<OrderDetailPageProps> = ({ onShowToast })
               <span>Protected by Apaibay Buyer Delivery Guarantee</span>
             </div>
           </div>
+
+          {/* Crypto Payment Settlement Details (when paid via crypto) */}
+          {(order.paymentMethod === 'crypto' || order.cryptoCurrency || order.cryptoPayment) && (
+            <div className="p-6 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 border border-slate-700 text-white space-y-3.5 shadow-sm">
+              <div className="flex items-center justify-between border-b border-slate-700/80 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="w-7 h-7 rounded-lg bg-[#ff6a00]/20 border border-[#ff6a00]/40 flex items-center justify-center text-[#ff6a00]">
+                    ⚡
+                  </span>
+                  <h4 className="font-extrabold text-sm text-white">Crypto Settlement</h4>
+                </div>
+                <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  On-Chain Verified
+                </span>
+              </div>
+
+              <div className="space-y-2 text-xs text-slate-300">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Asset & Network</span>
+                  <span className="font-bold text-white font-mono">
+                    {order.cryptoCurrency || 'USDT'} ({order.cryptoNetwork || 'BEP-20'})
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Crypto Amount</span>
+                  <span className="font-extrabold text-emerald-400 font-mono">
+                    {order.cryptoAmount || order.cryptoPayment?.payAmount || order.total}{' '}
+                    {order.cryptoCurrency || 'USDT'}
+                  </span>
+                </div>
+
+                {order.payAddress && (
+                  <div className="space-y-1 pt-1">
+                    <span className="text-slate-400 text-[11px]">Deposit Address</span>
+                    <div className="p-2 rounded-xl bg-slate-800/80 border border-slate-700 font-mono text-[10px] text-slate-300 break-all select-all flex items-center justify-between gap-1">
+                      <span>{order.payAddress}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (order.payAddress && navigator.clipboard) {
+                            navigator.clipboard.writeText(order.payAddress);
+                            onShowToast('Deposit address copied', 'success');
+                          }
+                        }}
+                        className="p-1 hover:text-white cursor-pointer"
+                        title="Copy address"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {order.transactionReference && (
+                  <div className="space-y-1 pt-1">
+                    <span className="text-slate-400 text-[11px]">Transaction Reference</span>
+                    <div className="p-2 rounded-xl bg-slate-800/80 border border-slate-700 font-mono text-[10px] text-slate-300 break-all select-all flex items-center justify-between gap-1">
+                      <span>{order.transactionReference}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (order.transactionReference && navigator.clipboard) {
+                            navigator.clipboard.writeText(order.transactionReference);
+                            onShowToast('Transaction reference copied', 'success');
+                          }
+                        }}
+                        className="p-1 hover:text-white cursor-pointer"
+                        title="Copy reference"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-2 text-[10px] text-slate-400 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Settled via NOWPayments Gateway Architecture (Sandbox)</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

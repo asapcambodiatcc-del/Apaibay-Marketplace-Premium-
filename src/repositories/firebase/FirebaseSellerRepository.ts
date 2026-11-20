@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase/config';
 import { handleFirestoreError, OperationType } from '../../services/firebase/firestoreErrors';
 import { Seller } from '../../types';
@@ -81,36 +81,36 @@ export class FirebaseSellerRepository implements SellerRepository {
     const current = auth.currentUser;
     if (!current) throw new Error('Authentication required to register as seller');
 
-    const sellerId = current.uid;
-    const now = new Date().toISOString();
-
-    const seller: Seller = {
-      sellerId,
-      ownerUid: current.uid,
-      storeName: storeName.trim(),
-      description: description.trim(),
-      businessCountry: (options?.businessCountry || 'KH').toUpperCase(),
-      businessType: options?.businessType || 'individual',
-      logo: options?.logo || current.photoURL || 'https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=120',
-      verificationStatus: 'pending', // NON-NEGOTIABLE: new applications default strictly to pending
-      submittedAt: now,
-      rating: 5.0,
-      contactInfo: {
-        email: current.email || '',
-        phone: options?.contactInfo?.phone || '',
-        address: options?.contactInfo?.address || '',
+    const token = await current.getIdToken();
+    const res = await fetch('/api/commerce/sellers/apply', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
       },
-      createdAt: now,
-      updatedAt: now,
-    };
+      body: JSON.stringify({
+        storeName: storeName.trim(),
+        description: description.trim(),
+        businessCountry: (options?.businessCountry || 'KH').toUpperCase(),
+        businessType: options?.businessType || 'individual',
+        logo:
+          options?.logo ||
+          current.photoURL ||
+          'https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=120',
+        contactInfo: {
+          email: current.email || '',
+          phone: options?.contactInfo?.phone || '',
+          address: options?.contactInfo?.address || '',
+        },
+      }),
+    });
 
-    try {
-      await setDoc(doc(db, SELLERS_COLLECTION, sellerId), seller);
-      return seller;
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `${SELLERS_COLLECTION}/${sellerId}`);
-      throw error;
+    const body = await res.json();
+    if (!res.ok || !body.success || !body.seller) {
+      throw new Error(body?.error?.message || 'Seller registration rejected by backend.');
     }
+
+    return body.seller as Seller;
   }
 
   async getSeller(sellerId: string): Promise<Seller | null> {

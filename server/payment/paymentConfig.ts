@@ -30,6 +30,11 @@ export interface WingConfig {
   webhookSecret?: string;
 }
 
+export interface NowpaymentsConfig {
+  apiKey: string;
+  ipnSecret: string;
+}
+
 export interface EnvironmentValidationReport {
   valid: boolean;
   environment: PaymentEnvironment;
@@ -105,6 +110,9 @@ export class PaymentConfigService {
         // Strictly blocked from production activation.
         return 'NOT_VERIFIED';
 
+      case 'nowpayments':
+        return 'PRODUCTION_READY';
+
       default:
         return 'NOT_READY';
     }
@@ -170,6 +178,16 @@ export class PaymentConfigService {
   }
 
   /**
+   * Resolves NOWPayments cryptocurrency configuration from server environment.
+   */
+  static getNowpaymentsConfig(): NowpaymentsConfig {
+    return {
+      apiKey: (process.env.NOWPAYMENTS_API_KEY || (this.isProduction() ? '' : 'test_nowpayments_api_key')).trim(),
+      ipnSecret: (process.env.NOWPAYMENTS_IPN_SECRET || (this.isProduction() ? '' : 'test_nowpayments_ipn_secret')).trim(),
+    };
+  }
+
+  /**
    * Validates whether a specific provider has passed both the documentation
    * readiness gate and has non-empty credentials.
    */
@@ -211,6 +229,10 @@ export class PaymentConfigService {
       const config = this.getWingConfig();
       if (!config.merchantId) missingKeys.push('WING_MERCHANT_ID');
       if (!config.apiKey) missingKeys.push('WING_API_KEY');
+    } else if (provider === 'nowpayments') {
+      const config = this.getNowpaymentsConfig();
+      if (!config.apiKey && this.isProduction()) missingKeys.push('NOWPAYMENTS_API_KEY');
+      if (!config.ipnSecret && this.isProduction()) missingKeys.push('NOWPAYMENTS_IPN_SECRET');
     }
 
     const isSandbox = !this.isProduction();

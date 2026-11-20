@@ -227,24 +227,15 @@ export class ReconciliationService {
    * Scans orders and payments in Firestore to detect state inconsistencies.
    */
   static async reconcile(): Promise<ReconciliationReport> {
-    let orderDocs: any[] = [];
-    let paymentDocs: any[] = [];
-    let eventDocs: any[] = [];
+    const [ordersSnap, paymentsSnap, eventsSnap] = await Promise.all([
+      getDocs(collection(db, 'orders')),
+      getDocs(collection(db, 'payments')),
+      getDocs(collection(db, 'paymentEvents')),
+    ]);
 
-    try {
-      const ordersSnap = await getDocs(collection(db, 'orders'));
-      orderDocs = ordersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    } catch {}
-
-    try {
-      const paymentsSnap = await getDocs(collection(db, 'payments'));
-      paymentDocs = paymentsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    } catch {}
-
-    try {
-      const eventsSnap = await getDocs(collection(db, 'paymentEvents'));
-      eventDocs = eventsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    } catch {}
+    const orderDocs = ordersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const paymentDocs = paymentsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const eventDocs = eventsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
     return this.analyze(orderDocs, paymentDocs, eventDocs);
   }

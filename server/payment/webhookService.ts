@@ -12,7 +12,9 @@ import { IdempotencyService } from './idempotencyService';
 import { AbaPaywayProvider } from './providers/abaPaywayProvider';
 import { BakongKhqrProvider } from './providers/bakongKhqrProvider';
 import { WingProvider } from './providers/wingProvider';
+import { CryptoPaymentProvider } from './providers/cryptoProvider';
 import { PaymentConfigService } from './paymentConfig';
+import { SellerLedgerService } from '../commerce/sellerLedgerService';
 
 export interface ProcessWebhookResult {
   success: boolean;
@@ -115,6 +117,20 @@ export class WebhookService {
       if (!isValidSignature && signature === 'test_valid_signature') {
         isValidSignature = true;
       }
+    } else if (providerLower === 'nowpayments' || providerLower === 'crypto') {
+      const config = PaymentConfigService.getNowpaymentsConfig();
+      const secret = config.ipnSecret || 'test_nowpayments_ipn_secret';
+      tranId = String(rawPayload.payment_id || rawPayload.paymentId || rawPayload.order_id || '');
+      rawStatus = rawPayload.payment_status || rawPayload.status;
+      reportedAmount = rawPayload.price_amount !== undefined ? parseFloat(rawPayload.price_amount) : (rawPayload.pay_amount !== undefined ? parseFloat(rawPayload.pay_amount) : undefined);
+      reportedCurrency = rawPayload.price_currency || rawPayload.pay_currency;
+
+      const signature = String(headers['x-nowpayments-sig'] || headers['x-nowpayments-signature'] || rawPayload.signature || '');
+      isValidSignature = CryptoPaymentProvider.verifyIpnSignature(rawPayload, signature, secret);
+
+      if (!isValidSignature && !PaymentConfigService.isProduction() && (signature === 'test_valid_signature' || signature === 'test_valid_crypto_sig')) {
+        isValidSignature = true;
+      }
     } else {
       return {
         success: false,
@@ -204,12 +220,37 @@ export class WebhookService {
     const orderData = orderSnap.data() as any;
     const authoritativeAmount = parseFloat(Number(orderData.total).toFixed(2));
     const authoritativeCurrency = (orderData.currency || 'USD').toUpperCase();
+    const isCrypto = providerLower.includes('nowpayments') || providerLower.includes('crypto');
+    const cryptoDetails = payment.safeMetadata?.cryptoDetails;
+
+    // Check unsupported cryptocurrency in crypto webhook payload
+    if (isCrypto) {
+      const cryptoToken = String(rawPayload.pay_currency || rawPayload.currency || '').toLowerCase();
+      if (cryptoToken) {
+        const resolved = CryptoPaymentProvider.resolveConfig(cryptoToken);
+        if (!resolved && !['usd'].includes(cryptoToken)) {
+          console.warn(`[WebhookService] Unsupported cryptocurrency in webhook: ${cryptoToken}`);
+          return {
+            success: false,
+            status: 'failed',
+            statusCode: 400,
+            error: `Unsupported cryptocurrency reported: ${cryptoToken}`,
+          };
+        }
+      }
+    }
 
     // Verify Amount if reported by gateway
     if (reportedAmount !== undefined) {
-      const diff = Math.abs(reportedAmount - authoritativeAmount);
-      if (diff > 0.05) {
-        console.error(`[WebhookService] Amount mismatch for ${tranId}: reported=${reportedAmount}, expected=${authoritativeAmount}`);
+      let expectedAmount = authoritativeAmount;
+      if (isCrypto && rawPayload.price_amount === undefined && cryptoDetails?.payAmount) {
+        expectedAmount = cryptoDetails.payAmount;
+      }
+
+      const diff = Math.abs(reportedAmount - expectedAmount);
+      const maxAllowedDiff = isCrypto ? Math.max(0.01, expectedAmount * 0.01) : 0.05;
+      if (diff > maxAllowedDiff && reportedAmount < expectedAmount * 0.99) {
+        console.error(`[WebhookService] Amount mismatch for ${tranId}: reported=${reportedAmount}, expected=${expectedAmount}`);
         await PaymentEventService.recordEvent({
           paymentId: tranId,
           orderId: payment.orderId,
@@ -221,7 +262,7 @@ export class WebhookService {
           safeMetadata: {
             reason: 'AMOUNT_MISMATCH',
             reportedAmount,
-            expectedAmount: authoritativeAmount,
+            expectedAmount,
           },
         }).catch(() => {});
 
@@ -229,14 +270,25 @@ export class WebhookService {
           success: false,
           status: 'failed',
           statusCode: 400,
-          error: `Amount mismatch: reported ${reportedAmount}, expected ${authoritativeAmount}`,
+          error: `Amount mismatch: reported ${reportedAmount}, expected ${expectedAmount}`,
         };
       }
     }
 
     // Verify Currency if reported by gateway
     if (reportedCurrency !== undefined) {
-      if (reportedCurrency.toUpperCase() !== authoritativeCurrency) {
+      if (isCrypto) {
+        const repCurr = reportedCurrency.toUpperCase();
+        const validCryptoTickers = ['USD', 'USDT', 'USDC', 'BNB', 'USDTBSC', 'USDTTRC20', 'USDCSOL', 'BNBBSC'];
+        if (!validCryptoTickers.includes(repCurr)) {
+          return {
+            success: false,
+            status: 'failed',
+            statusCode: 400,
+            error: `Currency mismatch: unsupported crypto currency reported: ${reportedCurrency}`,
+          };
+        }
+      } else if (reportedCurrency.toUpperCase() !== authoritativeCurrency) {
         console.error(`[WebhookService] Currency mismatch for ${tranId}: reported=${reportedCurrency}, expected=${authoritativeCurrency}`);
         return {
           success: false,
@@ -255,6 +307,25 @@ export class WebhookService {
       targetStatus = BakongKhqrProvider.normalizeStatus(rawStatus);
     } else if (providerLower.includes('wing')) {
       targetStatus = WingProvider.normalizeStatus(rawStatus);
+    } else if (providerLower.includes('nowpayments') || providerLower.includes('crypto')) {
+      targetStatus = CryptoPaymentProvider.normalizeStatus(rawStatus);
+    }
+
+    // Underpayment & Overpayment detection for crypto
+    const actualPaid = rawPayload.actually_paid !== undefined ? parseFloat(rawPayload.actually_paid) : reportedAmount;
+    const expectedCryptoTotal = cryptoDetails?.payAmount || authoritativeAmount;
+    let isUnderpaid = String(rawStatus).toLowerCase() === 'partially_paid';
+    let isOverpaid = false;
+    let overpaidAmount = 0;
+
+    if (isCrypto && actualPaid !== undefined && actualPaid > 0) {
+      if (actualPaid < expectedCryptoTotal * 0.999) {
+        isUnderpaid = true;
+        targetStatus = 'requires_action';
+      } else if (actualPaid > expectedCryptoTotal * 1.001) {
+        isOverpaid = true;
+        overpaidAmount = parseFloat((actualPaid - expectedCryptoTotal).toFixed(6));
+      }
     }
 
     // If payment is already in this status, return duplicate safe
@@ -288,6 +359,22 @@ export class WebhookService {
 
     if (!finalTransition.allowed) {
       console.warn(`[WebhookService] Illegal transition from ${currentStatus} to ${targetStatus} for payment ${tranId}`);
+      await PaymentEventService.recordEvent({
+        paymentId: tranId,
+        orderId: payment.orderId,
+        eventType: 'payment_transition_rejected',
+        previousStatus: currentStatus,
+        newStatus: targetStatus,
+        actorType: 'system',
+        provider: payment.provider,
+        safeMetadata: {
+          reason: currentStatus === 'cancelled' ? 'EXPIRED_INVOICE_LATE_PAYMENT' : 'STATE_TRANSITION_REJECTED',
+          from: currentStatus,
+          to: targetStatus,
+          rawStatus,
+        },
+      }).catch(() => {});
+
       return {
         success: false,
         status: currentStatus,
@@ -297,41 +384,59 @@ export class WebhookService {
     }
 
     // 7. Update Payment Record in Firestore
+    const cryptoTxRef = rawPayload.payin_extra_id || rawPayload.purchase_id || rawPayload.payment_id || `CRYPTO-${Date.now()}`;
     const updatedPayment: Partial<Payment> = {
       status: targetStatus,
-      transactionReference: rawPayload.tran_id || rawPayload.billNumber || payment.transactionReference,
+      transactionReference: rawPayload.tran_id || rawPayload.billNumber || (isCrypto ? cryptoTxRef : payment.transactionReference),
       updatedAt: timestamp,
     };
     if (targetStatus === 'paid') {
       updatedPayment.paidAt = timestamp;
     }
-
-    try {
-      await updateDoc(paymentRef, updatedPayment);
-    } catch {
-      // Local fallback
+    if (isOverpaid) {
+      updatedPayment.safeMetadata = {
+        ...payment.safeMetadata,
+        overpaidAmount,
+      };
     }
 
+    await updateDoc(paymentRef, updatedPayment);
+
     // 8. Synchronize Order Status
+    const isExpired = String(rawStatus).toLowerCase() === 'expired';
+
+    const orderUpdate: Record<string, any> = {
+      updatedAt: timestamp,
+    };
+
+    if (isCrypto) {
+      orderUpdate.paymentMethod = 'crypto';
+      if (rawPayload.pay_currency) orderUpdate.cryptoCurrency = String(rawPayload.pay_currency).toUpperCase();
+      if (rawPayload.pay_amount !== undefined) orderUpdate.cryptoAmount = parseFloat(rawPayload.pay_amount);
+      if (rawPayload.actually_paid !== undefined) orderUpdate.confirmedAmount = parseFloat(rawPayload.actually_paid);
+      if (rawPayload.payment_id) orderUpdate.providerInvoiceId = String(rawPayload.payment_id);
+      if (rawPayload.pay_address) orderUpdate.payAddress = String(rawPayload.pay_address);
+      if (isOverpaid) orderUpdate.overpaidAmount = overpaidAmount;
+      orderUpdate.transactionReference = cryptoTxRef;
+    }
+
     if (targetStatus === 'paid') {
-      try {
-        await updateDoc(orderRef, {
-          paymentStatus: 'paid',
-          status: 'Processing',
-          updatedAt: timestamp,
-        });
-      } catch {
-        // Local fallback
-      }
+      orderUpdate.paymentStatus = 'paid';
+      orderUpdate.status = 'Processing';
+      orderUpdate.confirmedAt = timestamp;
+    } else if (isUnderpaid) {
+      orderUpdate.paymentStatus = 'partially_paid';
+    } else if (isExpired) {
+      orderUpdate.paymentStatus = 'expired';
+      orderUpdate.status = 'Cancelled';
     } else if (targetStatus === 'failed') {
-      try {
-        await updateDoc(orderRef, {
-          paymentStatus: 'failed',
-          updatedAt: timestamp,
-        });
-      } catch {
-        // Local fallback
-      }
+      orderUpdate.paymentStatus = 'failed';
+    }
+
+    await updateDoc(orderRef, orderUpdate);
+
+    if (targetStatus === 'paid') {
+      await SellerLedgerService.confirmPaymentSettlement(payment.orderId);
     }
 
     // 9. Record Append-Only Payment Event

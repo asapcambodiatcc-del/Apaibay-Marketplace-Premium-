@@ -103,13 +103,8 @@ export class PaymentEventService {
       safeMetadata: sanitizeSafeMetadata(params.safeMetadata),
     };
 
-    try {
-      const eventRef = doc(db, 'paymentEvents', eventId);
-      await setDoc(eventRef, event);
-    } catch (err) {
-      // In offline/mock test environments where Firestore write streams are mocked:
-      console.warn(`[PaymentEventService] Audit event recorded locally: ${eventId} (${params.eventType})`);
-    }
+    const eventRef = doc(db, 'paymentEvents', eventId);
+    await setDoc(eventRef, event);
 
     return event;
   }
@@ -118,27 +113,19 @@ export class PaymentEventService {
    * Retrieves audit events for a given payment ID.
    */
   static async getEventsForPayment(paymentId: string): Promise<PaymentEvent[]> {
-    try {
-      const q = query(collection(db, 'paymentEvents'), where('paymentId', '==', paymentId));
-      const snap = await getDocs(q);
-      const events = snap.docs.map((d) => d.data() as PaymentEvent);
-      return events.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    } catch {
-      return [];
-    }
+    const q = query(collection(db, 'paymentEvents'), where('paymentId', '==', paymentId));
+    const snap = await getDocs(q);
+    const events = snap.docs.map((d) => d.data() as PaymentEvent);
+    return events.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }
 
   /**
    * Retrieves audit events for a given order ID.
    */
   static async getEventsForOrder(orderId: string): Promise<PaymentEvent[]> {
-    try {
-      const q = query(collection(db, 'paymentEvents'), where('orderId', '==', orderId));
-      const snap = await getDocs(q);
-      const events = snap.docs.map((d) => d.data() as PaymentEvent);
-      return events.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    } catch {
-      return [];
-    }
+    const q = query(collection(db, 'paymentEvents'), where('orderId', '==', orderId));
+    const snap = await getDocs(q);
+    const events = snap.docs.map((d) => d.data() as PaymentEvent);
+    return events.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }
 }

@@ -1,25 +1,81 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { orderRepository } from '../repositories';
 import { Order } from '../types';
-import { PaymentMethodType, PaymentIntent, PaymentActionRequired } from '../types/payment';
+import { PaymentMethodType, PaymentActionRequired } from '../types/payment';
 import { PaymentClient } from '../services/paymentClient';
+import { CryptoCheckoutModal } from '../components/CryptoCheckoutModal';
 import {
   ShieldCheck,
   CreditCard,
   Truck,
   Lock,
   ArrowRight,
-  CheckCircle2,
   AlertCircle,
-  QrCode,
-  Smartphone,
   Info,
-  RefreshCw,
+  ChevronRight,
+  Zap,
+  CheckCircle2,
+  Sparkles,
 } from 'lucide-react';
+
+// Authentic Payment Brand SVG Vectors (Preserved from Apaibay Brand Identity)
+const AbaPayLogo: React.FC<{ className?: string }> = ({ className = 'h-5 w-auto' }) => (
+  <svg viewBox="0 0 110 32" className={className} fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="ABA PAY">
+    <rect width="110" height="32" rx="6" fill="#003B5C" />
+    <text x="14" y="22" fill="#FFFFFF" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="900" fontSize="17" letterSpacing="0.5">ABA</text>
+    <rect x="62" y="6" width="38" height="20" rx="4" fill="#00A3E0" />
+    <text x="67" y="21" fill="#FFFFFF" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="800" fontSize="13" letterSpacing="0.5">PAY</text>
+  </svg>
+);
+
+const KhqrLogo: React.FC<{ className?: string }> = ({ className = 'h-5 w-auto' }) => (
+  <svg viewBox="0 0 95 32" className={className} fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="KHQR">
+    <rect width="95" height="32" rx="6" fill="#E11922" />
+    <rect x="8" y="7" width="16" height="16" rx="2" fill="none" stroke="#FFFFFF" strokeWidth="2.5" />
+    <rect x="12" y="11" width="8" height="8" rx="1" fill="#FFFFFF" />
+    <text x="30" y="22" fill="#FFFFFF" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="900" fontSize="15" letterSpacing="0.5">KHQR</text>
+  </svg>
+);
+
+const MastercardLogo: React.FC<{ className?: string }> = ({ className = 'h-6 w-auto' }) => (
+  <svg viewBox="0 0 54 34" className={className} fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Mastercard">
+    <circle cx="18" cy="17" r="14" fill="#EB001B" />
+    <circle cx="36" cy="17" r="14" fill="#F79E1B" />
+    <path d="M27 6.4a13.9 13.9 0 0 1 0 21.2 13.9 13.9 0 0 1 0-21.2Z" fill="#FF5F00" />
+  </svg>
+);
+
+const VisaLogo: React.FC<{ className?: string }> = ({ className = 'h-6 w-auto' }) => (
+  <svg viewBox="0 7 24 10" className={className} fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="VISA">
+    <path
+      d="M9.112 8.262L5.97 15.758H3.92L2.374 9.775c-.094-.368-.175-.503-.461-.658C1.447 8.864.677 8.627 0 8.479l.046-.217h3.3a.904.904 0 01.894.764l.817 4.338 2.018-5.102zm8.033 5.049c.008-1.979-2.736-2.088-2.717-2.972.006-.269.262-.555.822-.628a3.66 3.66 0 011.913.336l.34-1.59a5.207 5.207 0 00-1.814-.333c-1.917 0-3.266 1.02-3.278 2.479-.012 1.079.963 1.68 1.698 2.04.756.367 1.01.603 1.006.931-.005.504-.602.725-1.16.734-.975.015-1.54-.263-1.992-.473l-.351 1.642c.453.208 1.289.39 2.156.398 2.037 0 3.37-1.006 3.377-2.564m5.061 2.447H24l-1.565-7.496h-1.656a.883.883 0 00-.826.55l-2.909 6.946h2.036l.405-1.12h2.488zm-2.163-2.656l1.02-2.815.588 2.815zm-8.16-4.84l-1.603 7.496H8.34l1.605-7.496z"
+      className="fill-[#1A1F71] dark:fill-white"
+    />
+  </svg>
+);
+
+const WingLogo: React.FC<{ className?: string }> = ({ className = 'h-5 w-auto' }) => (
+  <svg viewBox="0 0 92 30" className={className} fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Wing">
+    <rect width="92" height="30" rx="6" fill="#F4FBF0" />
+    <circle cx="15" cy="15" r="10" fill="#8DC63F" />
+    <path d="M11 18c0-3.5 2.5-6.5 7-7.5-2.5 2.5-3 4.5-2.5 6.5-1.5 0.5-3 1.5-4.5 1z" fill="#FFFFFF" />
+    <text x="32" y="20.5" fill="#0C2340" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="900" fontSize="16" letterSpacing="-0.3">Wing</text>
+  </svg>
+);
+
+const WingBankLogo: React.FC<{ className?: string }> = ({ className = 'h-5 w-auto' }) => (
+  <svg viewBox="0 0 116 30" className={className} fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Wing Bank">
+    <rect width="116" height="30" rx="6" fill="#F4FBF0" />
+    <circle cx="15" cy="15" r="10" fill="#8DC63F" />
+    <path d="M11 18c0-3.5 2.5-6.5 7-7.5-2.5 2.5-3 4.5-2.5 6.5-1.5 0.5-3 1.5-4.5 1z" fill="#FFFFFF" />
+    <text x="31" y="20.5" fill="#0C2340" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="900" fontSize="14" letterSpacing="-0.3">Wing</text>
+    <text x="70" y="20.5" fill="#8DC63F" fontFamily="system-ui, -apple-system, sans-serif" fontWeight="800" fontSize="13">Bank</text>
+  </svg>
+);
 
 interface CheckoutPageProps {
   onShowToast: (msg: string, type?: 'success' | 'info' | 'error') => void;
@@ -31,29 +87,35 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onShowToast }) => {
   const { cart, subtotal, clearCart } = useCart();
   const { user, openAuthModal } = useAuth();
 
+  // STEP 1 — SHIPPING INFORMATION
   const [fullName, setFullName] = useState(user?.name || 'Jane Doe');
-  const [email, setEmail] = useState(user?.email || 'jane.doe@example.com');
-  const [street, setStreet] = useState('100 Oxford Street');
-  const [city, setCity] = useState('London');
-  const [postalCode, setPostalCode] = useState('W1D 1LL');
-  const [country, setCountry] = useState('United Kingdom');
-  const [phone, setPhone] = useState('+44 20 7946 0912');
+  const [phone, setPhone] = useState('+855 76 223 5113');
+  const [country, setCountry] = useState('Cambodia');
+  const [provinceCity, setProvinceCity] = useState('Phnom Penh');
+  const [district, setDistrict] = useState('Chamkarmon');
+  const [street, setStreet] = useState('100 Norodom Boulevard');
+  const [deliveryNotes, setDeliveryNotes] = useState('');
 
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>('card');
+  // STEP 2 — TRADITIONAL PAYMENT METHOD
+  // Options: 'aba_payway' | 'khqr' | 'mastercard' | 'visa' | 'wing' | 'wing_bank'
+  const [traditionalMethod, setTraditionalMethod] = useState<'aba_payway' | 'khqr' | 'mastercard' | 'visa' | 'wing' | 'wing_bank'>('visa');
   const [cardNumber, setCardNumber] = useState('•••• •••• •••• 4242');
   const [cardExp, setCardExp] = useState('12/28');
   const [cardCvc, setCardCvc] = useState('123');
+
+  // STEP 3 — CRYPTO CHECKOUT MODAL
+  const [isCryptoModalOpen, setIsCryptoModalOpen] = useState(false);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Sync user details if user signs in during checkout
-  React.useEffect(() => {
+  useEffect(() => {
     if (user) {
       if (user.name) setFullName(user.name);
-      if (user.email) setEmail(user.email);
     }
   }, [user]);
 
-  // Phase 5A: Sandbox Simulation Controls
+  // Sandbox Simulation Controls
   const [simulationToken, setSimulationToken] = useState<string>('test_success');
   const [activeChallenge, setActiveChallenge] = useState<{
     intentId: string;
@@ -77,7 +139,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onShowToast }) => {
         <p className="text-xs sm:text-sm text-slate-500">Add items to your cart before proceeding to checkout.</p>
         <Link
           to="/"
-          className="px-6 py-2.5 rounded-xl bg-[#ff6a00] text-white font-bold text-xs"
+          className="px-6 py-2.5 rounded-xl bg-[#ff6a00] text-white font-bold text-xs shadow-md"
         >
           Browse Products
         </Link>
@@ -85,53 +147,110 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onShowToast }) => {
     );
   }
 
-  const handlePlaceOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Validate Step 1 Shipping Information
+  const validateShippingFields = (): boolean => {
+    if (!fullName.trim()) {
+      onShowToast('Please enter Recipient Full Name', 'error');
+      return false;
+    }
+    if (!phone.trim()) {
+      onShowToast('Please enter Recipient Phone Number', 'error');
+      return false;
+    }
+    if (!country.trim()) {
+      onShowToast('Please enter Shipping Country', 'error');
+      return false;
+    }
+    if (!provinceCity.trim()) {
+      onShowToast('Please enter Province or City', 'error');
+      return false;
+    }
+    if (!district.trim()) {
+      onShowToast('Please enter District', 'error');
+      return false;
+    }
+    if (!street.trim()) {
+      onShowToast('Please enter Street Address', 'error');
+      return false;
+    }
+    return true;
+  };
+
+  // Helper to create an order in Firestore
+  const buildAndCreateOrder = async (payMethod: string): Promise<Order> => {
     if (!user) {
       onShowToast('Please sign in to complete your checkout securely.', 'info');
       openAuthModal('login');
-      return;
+      throw new Error('Authentication required');
     }
 
-    if (!fullName || !street || !city || !postalCode) {
-      onShowToast('Please fill in all required shipping fields', 'error');
-      return;
-    }
+    const orderData: Omit<Order, 'id'> = {
+      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      items: [...cart],
+      total,
+      subtotal,
+      shipping,
+      discount: 0,
+      status: 'Processing',
+      shippingAddress: {
+        name: fullName,
+        phone,
+        country,
+        provinceCity,
+        district,
+        street,
+        city: provinceCity,
+        state: provinceCity,
+        postalCode: '12000',
+        deliveryNotes,
+      },
+      paymentMethod: payMethod,
+      trackingNumber: '',
+      carrier: 'FedEx Priority Global',
+      estimatedDelivery: '3 - 5 business days',
+    };
+
+    return await orderRepository.create(orderData);
+  };
+
+  // Traditional Payment Submission Handler
+  const handlePlaceTraditionalOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateShippingFields()) return;
 
     setIsSubmitting(true);
     setPaymentError(null);
 
     try {
-      // 1. Create Authoritative Order via Phase 4B Backend Endpoint
-      const orderData: Omit<Order, 'id'> = {
-        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-        items: [...cart],
-        total,
-        subtotal,
-        shipping,
-        discount: 0,
-        status: 'Processing',
-        shippingAddress: {
-          name: fullName,
-          street,
-          city,
-          state: 'Region',
-          postalCode,
-          country,
-          phone,
-        },
-        trackingNumber: '',
-        carrier: 'FedEx Priority Global',
-        estimatedDelivery: '3 - 5 business days',
-      };
+      // Map UI choice to authoritative payment method
+      let resolvedMethod: PaymentMethodType = 'card';
+      let brandName = 'VISA';
 
-      const createdOrder = await orderRepository.create(orderData);
+      if (traditionalMethod === 'aba_payway') {
+        resolvedMethod = 'aba_payway';
+        brandName = 'ABA PAY';
+      } else if (traditionalMethod === 'khqr') {
+        resolvedMethod = 'khqr';
+        brandName = 'Bakong KHQR';
+      } else if (traditionalMethod === 'wing' || traditionalMethod === 'wing_bank') {
+        resolvedMethod = 'wing';
+        brandName = traditionalMethod === 'wing_bank' ? 'Wing Bank' : 'Wing Money';
+      } else if (traditionalMethod === 'mastercard') {
+        resolvedMethod = 'card';
+        brandName = 'Mastercard';
+      } else {
+        resolvedMethod = 'card';
+        brandName = 'VISA';
+      }
 
-      // 2. Initialize Phase 5A Server-Authoritative Payment Intent
+      // 1. Create Order
+      const createdOrder = await buildAndCreateOrder(resolvedMethod);
+
+      // 2. Initialize Authoritative Payment Intent
       const idempotencyKey = `idemp_pay_${createdOrder.id}_${Date.now()}`;
       const intent = await PaymentClient.createIntent({
         orderId: createdOrder.id,
-        methodType: paymentMethod,
+        methodType: resolvedMethod,
         idempotencyKey,
       });
 
@@ -140,7 +259,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onShowToast }) => {
         intentId: intent.id,
         simulationToken,
         safePaymentData: {
-          brand: paymentMethod === 'card' ? 'Visa Sandbox' : paymentMethod.toUpperCase(),
+          brand: brandName,
           last4: '4242',
         },
       });
@@ -165,17 +284,39 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onShowToast }) => {
         onShowToast('Payment was not approved. You can retry with a different test scenario.', 'error');
       }
     } catch (err: any) {
-      setPaymentError({
-        code: 'CHECKOUT_ERROR',
-        message: err?.message || 'Failed to complete order. Please try again.',
-        retryable: true,
-      });
-      onShowToast(err?.message || 'Failed to place order. Please try again.', 'error');
+      if (err.message !== 'Authentication required') {
+        setPaymentError({
+          code: 'CHECKOUT_ERROR',
+          message: err?.message || 'Failed to complete order. Please try again.',
+          retryable: true,
+        });
+        onShowToast(err?.message || 'Failed to place order. Please try again.', 'error');
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // Open dedicated crypto payment interface
+  const handleOpenCryptoCheckout = () => {
+    if (!user) {
+      onShowToast('Please sign in to proceed with cryptocurrency checkout.', 'info');
+      openAuthModal('login');
+      return;
+    }
+    if (!validateShippingFields()) {
+      return;
+    }
+    setIsCryptoModalOpen(true);
+  };
+
+  // Callback passed to CryptoCheckoutModal to create the authoritative order
+  const handleInitiateCryptoOrder = async (): Promise<string> => {
+    const createdOrder = await buildAndCreateOrder('crypto');
+    return createdOrder.id;
+  };
+
+  // 3DS Challenge Verification
   const handleCompleteChallenge = async (outcome: 'approve' | 'reject') => {
     if (!activeChallenge) return;
     setIsSubmitting(true);
@@ -219,7 +360,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onShowToast }) => {
             Apaibay Secure Payment Gateway & Sandbox Environment
           </div>
           <p className="text-amber-800 dark:text-amber-300">
-            This checkout uses a strictly isolated, server-authoritative payment state machine. No real money or live financial gateways are contacted.
+            This checkout uses a strictly isolated, server-authoritative payment state machine. Both traditional Cambodian gateways and modern crypto networks operate in deterministic test sandbox mode.
           </p>
         </div>
       </div>
@@ -296,170 +437,237 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onShowToast }) => {
         </div>
       )}
 
-      <form onSubmit={handlePlaceOrder} className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* Left Column: Shipping & Payment */}
+      {/* Main Checkout Grid */}
+      <form onSubmit={handlePlaceTraditionalOrder} className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        {/* Left Column: 3 Structured Sections */}
         <div className="lg:col-span-8 space-y-6">
-          {/* 1. Shipping Details */}
+          {/* ========================================================= */}
+          {/* STEP 1 — SHIPPING INFORMATION                             */}
+          {/* ========================================================= */}
           <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-4">
-            <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <Truck className="w-4 h-4 text-[#ff6a00]" />
-              <span>1. Shipping Information</span>
-            </h2>
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Truck className="w-5 h-5 text-[#ff6a00]" />
+                <span className="uppercase tracking-wider">STEP 1 — SHIPPING INFORMATION</span>
+              </h2>
+              <span className="text-[11px] font-bold text-slate-400">All fields validated</span>
+            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-              <div className="space-y-1 sm:col-span-2">
-                <label className="font-bold text-slate-700 dark:text-slate-300">Recipient Full Name</label>
+              {/* Full Name */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 dark:text-slate-300">
+                  Full Name <span className="text-rose-500">*</span>
+                </label>
                 <input
                   type="text"
                   required
+                  placeholder="e.g. Sokha Meng"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
                 />
               </div>
 
+              {/* Phone Number */}
               <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">Email Address</label>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">Phone Number</label>
+                <label className="font-bold text-slate-700 dark:text-slate-300">
+                  Phone Number <span className="text-rose-500">*</span>
+                </label>
                 <input
                   type="tel"
                   required
+                  placeholder="+855 76 223 5113"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
                 />
               </div>
 
-              <div className="space-y-1 sm:col-span-2">
-                <label className="font-bold text-slate-700 dark:text-slate-300">Street Address</label>
+              {/* Country */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 dark:text-slate-300">
+                  Country <span className="text-rose-500">*</span>
+                </label>
                 <input
                   type="text"
                   required
+                  placeholder="Cambodia"
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                />
+              </div>
+
+              {/* Province / City */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 dark:text-slate-300">
+                  Province / City <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Phnom Penh / Siem Reap"
+                  value={provinceCity}
+                  onChange={(e) => setProvinceCity(e.target.value)}
+                  className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                />
+              </div>
+
+              {/* District */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 dark:text-slate-300">
+                  District <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Chamkarmon / Daun Penh"
+                  value={district}
+                  onChange={(e) => setDistrict(e.target.value)}
+                  className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                />
+              </div>
+
+              {/* Street Address */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 dark:text-slate-300">
+                  Street Address <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="House/Unit #, Street name"
                   value={street}
                   onChange={(e) => setStreet(e.target.value)}
                   className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">City</label>
+              {/* Delivery Notes (Optional) */}
+              <div className="space-y-1 sm:col-span-2">
+                <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                  <span>Delivery Notes</span>
+                  <span className="text-[10px] text-slate-400 font-normal">Optional</span>
+                </label>
                 <input
                   type="text"
-                  required
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">Postal Code</label>
-                <input
-                  type="text"
-                  required
-                  value={postalCode}
-                  onChange={(e) => setPostalCode(e.target.value)}
+                  placeholder="Special instructions for courier (e.g. Leave with security, call upon arrival)"
+                  value={deliveryNotes}
+                  onChange={(e) => setDeliveryNotes(e.target.value)}
                   className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
                 />
               </div>
             </div>
           </div>
 
-          {/* 2. Payment Method */}
+          {/* ========================================================= */}
+          {/* STEP 2 — PAYMENT METHOD (Traditional Cambodian Options)   */}
+          {/* ========================================================= */}
           <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-[#ff6a00]" />
-                <span>2. Payment Method</span>
+                <CreditCard className="w-5 h-5 text-[#ff6a00]" />
+                <span className="uppercase tracking-wider">STEP 2 — PAYMENT METHOD</span>
               </h2>
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                Sandbox Mode
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                Traditional Sandbox
               </span>
             </div>
 
+            {/* Grid of the 6 Traditional Methods */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {/* 1. ABA PAY */}
               <button
                 type="button"
-                onClick={() => setPaymentMethod('card')}
-                className={`p-3 rounded-2xl border text-xs font-bold text-center transition-all cursor-pointer ${
-                  paymentMethod === 'card'
-                    ? 'border-[#ff6a00] bg-orange-50/50 dark:bg-orange-950/30 text-[#ff6a00]'
-                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-400'
+                onClick={() => setTraditionalMethod('aba_payway')}
+                className={`p-3 rounded-2xl border text-xs font-bold flex flex-col items-center justify-center gap-2 transition-all cursor-pointer h-20 ${
+                  traditionalMethod === 'aba_payway'
+                    ? 'border-[#ff6a00] bg-orange-50/60 dark:bg-orange-950/30 ring-2 ring-[#ff6a00]/30 shadow-xs'
+                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-850'
                 }`}
               >
-                Card (Sandbox)
+                <AbaPayLogo className="h-6 w-auto" />
+                <span className="text-[10px] text-slate-500 font-medium">ABA PAY</span>
               </button>
+
+              {/* 2. KHQR */}
               <button
                 type="button"
-                onClick={() => setPaymentMethod('khqr')}
-                className={`p-3 rounded-2xl border text-xs font-bold text-center transition-all cursor-pointer ${
-                  paymentMethod === 'khqr'
-                    ? 'border-[#ff6a00] bg-orange-50/50 dark:bg-orange-950/30 text-[#ff6a00]'
-                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-400'
+                onClick={() => setTraditionalMethod('khqr')}
+                className={`p-3 rounded-2xl border text-xs font-bold flex flex-col items-center justify-center gap-2 transition-all cursor-pointer h-20 ${
+                  traditionalMethod === 'khqr'
+                    ? 'border-[#ff6a00] bg-orange-50/60 dark:bg-orange-950/30 ring-2 ring-[#ff6a00]/30 shadow-xs'
+                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-850'
                 }`}
               >
-                KHQR (Bakong)
+                <KhqrLogo className="h-6 w-auto" />
+                <span className="text-[10px] text-slate-500 font-medium">Bakong KHQR</span>
               </button>
+
+              {/* 3. Mastercard */}
               <button
                 type="button"
-                onClick={() => setPaymentMethod('aba_payway')}
-                className={`p-3 rounded-2xl border text-xs font-bold text-center transition-all cursor-pointer ${
-                  paymentMethod === 'aba_payway'
-                    ? 'border-[#ff6a00] bg-orange-50/50 dark:bg-orange-950/30 text-[#ff6a00]'
-                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-400'
+                onClick={() => setTraditionalMethod('mastercard')}
+                className={`p-3 rounded-2xl border text-xs font-bold flex flex-col items-center justify-center gap-2 transition-all cursor-pointer h-20 ${
+                  traditionalMethod === 'mastercard'
+                    ? 'border-[#ff6a00] bg-orange-50/60 dark:bg-orange-950/30 ring-2 ring-[#ff6a00]/30 shadow-xs'
+                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-850'
                 }`}
               >
-                ABA PAYWAY
+                <MastercardLogo className="h-7 w-auto" />
+                <span className="text-[10px] text-slate-500 font-medium">Mastercard</span>
               </button>
+
+              {/* 4. VISA */}
               <button
                 type="button"
-                onClick={() => setPaymentMethod('wing')}
-                className={`p-3 rounded-2xl border text-xs font-bold text-center transition-all cursor-pointer ${
-                  paymentMethod === 'wing'
-                    ? 'border-[#ff6a00] bg-orange-50/50 dark:bg-orange-950/30 text-[#ff6a00]'
-                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-400'
+                onClick={() => setTraditionalMethod('visa')}
+                className={`p-3 rounded-2xl border text-xs font-bold flex flex-col items-center justify-center gap-2 transition-all cursor-pointer h-20 ${
+                  traditionalMethod === 'visa'
+                    ? 'border-[#ff6a00] bg-orange-50/60 dark:bg-orange-950/30 ring-2 ring-[#ff6a00]/30 shadow-xs'
+                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-850'
                 }`}
               >
-                WING Money
+                <div className="h-6 flex items-center justify-center">
+                  <VisaLogo className="h-4 w-auto" />
+                </div>
+                <span className="text-[10px] text-slate-500 font-medium">VISA Card</span>
               </button>
+
+              {/* 5. Wing */}
               <button
                 type="button"
-                onClick={() => setPaymentMethod('paypal')}
-                className={`p-3 rounded-2xl border text-xs font-bold text-center transition-all cursor-pointer ${
-                  paymentMethod === 'paypal'
-                    ? 'border-[#ff6a00] bg-orange-50/50 dark:bg-orange-950/30 text-[#ff6a00]'
-                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-400'
+                onClick={() => setTraditionalMethod('wing')}
+                className={`p-3 rounded-2xl border text-xs font-bold flex flex-col items-center justify-center gap-2 transition-all cursor-pointer h-20 ${
+                  traditionalMethod === 'wing'
+                    ? 'border-[#ff6a00] bg-orange-50/60 dark:bg-orange-950/30 ring-2 ring-[#ff6a00]/30 shadow-xs'
+                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-850'
                 }`}
               >
-                PayPal
+                <WingLogo className="h-6 w-auto" />
+                <span className="text-[10px] text-slate-500 font-medium">Wing Money</span>
               </button>
+
+              {/* 6. Wing Bank */}
               <button
                 type="button"
-                onClick={() => setPaymentMethod('cod')}
-                className={`p-3 rounded-2xl border text-xs font-bold text-center transition-all cursor-pointer ${
-                  paymentMethod === 'cod'
-                    ? 'border-[#ff6a00] bg-orange-50/50 dark:bg-orange-950/30 text-[#ff6a00]'
-                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-400'
+                onClick={() => setTraditionalMethod('wing_bank')}
+                className={`p-3 rounded-2xl border text-xs font-bold flex flex-col items-center justify-center gap-2 transition-all cursor-pointer h-20 ${
+                  traditionalMethod === 'wing_bank'
+                    ? 'border-[#ff6a00] bg-orange-50/60 dark:bg-orange-950/30 ring-2 ring-[#ff6a00]/30 shadow-xs'
+                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-850'
                 }`}
               >
-                Cash on Delivery
+                <WingBankLogo className="h-6 w-auto" />
+                <span className="text-[10px] text-slate-500 font-medium">Wing Bank</span>
               </button>
             </div>
 
             {/* Sandbox Simulation Scenario Selector */}
             <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 space-y-2">
               <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                <span>Deterministic Sandbox Simulation Scenario:</span>
+                <span>Deterministic Traditional Gateway Scenario:</span>
                 <span className="text-[10px] text-slate-400 font-normal">Test Mode Only</span>
               </label>
               <select
@@ -475,7 +683,8 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onShowToast }) => {
               </select>
             </div>
 
-            {paymentMethod === 'card' && (
+            {/* Card Inputs if card method is selected */}
+            {(traditionalMethod === 'visa' || traditionalMethod === 'mastercard') && (
               <div className="space-y-3 pt-2 text-xs">
                 <div className="space-y-1">
                   <label className="font-bold text-slate-700 dark:text-slate-300">Simulated Card Number</label>
@@ -508,6 +717,65 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onShowToast }) => {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* ========================================================= */}
+          {/* STEP 3 — CRYPTO CURRENCY (Separate Dedicated Card/Button) */}
+          {/* ========================================================= */}
+          <div className="p-6 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 border border-slate-700 text-white shadow-xl space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700/80 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-[#ff6a00]/20 border border-[#ff6a00]/40 flex items-center justify-center text-[#ff6a00]">
+                  <Zap className="w-4 h-4" />
+                </div>
+                <h2 className="text-base font-extrabold uppercase tracking-wider text-white">
+                  STEP 3 — CRYPTO CURRENCY
+                </h2>
+              </div>
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                Direct On-Chain Settlement
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
+              <div className="sm:col-span-8 space-y-2">
+                <div className="text-sm font-bold text-slate-200">
+                  Prefer decentralized payment without bank intermediaries?
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Pay securely with <strong>USDT (BEP-20 / TRC-20)</strong>, <strong>USDC (Solana)</strong>, or <strong>BNB (BSC)</strong>. Enjoy real-time blockchain confirmation, guaranteed exchange rates, and zero card processing surcharges.
+                </p>
+                <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px]">
+                  <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700 font-mono">
+                    USDT • BEP-20
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700 font-mono">
+                    USDT • TRC-20
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700 font-mono">
+                    USDC • Solana
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700 font-mono">
+                    BNB • BSC
+                  </span>
+                </div>
+              </div>
+
+              <div className="sm:col-span-4 flex flex-col justify-center sm:items-end">
+                <button
+                  type="button"
+                  onClick={handleOpenCryptoCheckout}
+                  className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-[#ff6a00] hover:bg-[#e05d00] text-white font-black text-sm shadow-lg shadow-[#ff6a00]/30 transition-all flex items-center justify-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                >
+                  <Zap className="w-4 h-4 fill-white" />
+                  <span>Pay with Crypto</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+                <span className="text-[10px] text-slate-400 mt-1.5 text-center sm:text-right">
+                  Opens dedicated crypto interface
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -556,17 +824,60 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ onShowToast }) => {
               </div>
             </div>
 
+            {/* Authorize & Pay Traditional Button */}
             <button
               type="submit"
               disabled={isSubmitting}
               className="w-full py-3.5 rounded-2xl bg-[#ff6a00] hover:bg-[#e05d00] text-white font-extrabold text-sm shadow-md transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
             >
               <Lock className="w-4 h-4" />
-              <span>{isSubmitting ? 'Processing Payment...' : `Authorize & Pay • $${total.toFixed(2)}`}</span>
+              <span>
+                {isSubmitting
+                  ? 'Processing Payment...'
+                  : `Authorize with ${
+                      traditionalMethod === 'aba_payway'
+                        ? 'ABA PAY'
+                        : traditionalMethod === 'khqr'
+                        ? 'KHQR'
+                        : traditionalMethod === 'mastercard'
+                        ? 'Mastercard'
+                        : traditionalMethod === 'wing'
+                        ? 'Wing'
+                        : traditionalMethod === 'wing_bank'
+                        ? 'Wing Bank'
+                        : 'VISA'
+                    } • $${total.toFixed(2)}`}
+              </span>
             </button>
+
+            {/* Alternative Crypto Prompt */}
+            <div className="pt-2 text-center">
+              <button
+                type="button"
+                onClick={handleOpenCryptoCheckout}
+                className="text-xs font-bold text-slate-500 hover:text-[#ff6a00] transition-colors flex items-center justify-center gap-1 mx-auto cursor-pointer"
+              >
+                <Zap className="w-3.5 h-3.5 text-[#ff6a00]" />
+                <span>Or pay using USDT, USDC, or BNB in Step 3</span>
+              </button>
+            </div>
           </div>
         </div>
       </form>
+
+      {/* Dedicated Cryptocurrency Checkout Modal */}
+      <CryptoCheckoutModal
+        isOpen={isCryptoModalOpen}
+        onClose={() => setIsCryptoModalOpen(false)}
+        orderTotalUsd={total}
+        onOrderSuccess={(orderId) => {
+          clearCart();
+          setIsCryptoModalOpen(false);
+          navigate(`/orders/${orderId}`);
+        }}
+        onShowToast={onShowToast}
+        onInitiateOrder={handleInitiateCryptoOrder}
+      />
     </div>
   );
 };

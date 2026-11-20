@@ -174,4 +174,80 @@ export class PaymentClient {
     }
     return body.data;
   }
+
+  /**
+   * GET /api/payments/crypto/options
+   * Returns supported cryptocurrency payment options.
+   */
+  static async getCryptoOptions(): Promise<any[]> {
+    const res = await fetch('/api/payments/crypto/options');
+    const body = await res.json();
+    if (!res.ok || !body.success) {
+      throw new Error(body?.error || 'Failed to fetch cryptocurrency options.');
+    }
+    return body.data;
+  }
+
+  /**
+   * POST /api/payments/crypto/estimate
+   * Estimates crypto pay amount and rate for order total USD.
+   */
+  static async estimateCrypto(orderId: string, cryptoKey: string): Promise<any> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch('/api/payments/crypto/estimate', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ orderId, cryptoKey }),
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) {
+      throw new Error(body?.error || 'Failed to calculate crypto estimate.');
+    }
+    return body.data;
+  }
+
+  /**
+   * GET /api/payments/crypto/:paymentId/status
+   * Polls live crypto payment status, remaining time, and confirmations.
+   */
+  static async getCryptoStatus(paymentId: string): Promise<any> {
+    let headers: Record<string, string> = {};
+    try {
+      headers = await this.getAuthHeaders();
+    } catch {
+      // Continue unauthenticated if user is guest
+    }
+
+    const res = await fetch(`/api/payments/crypto/${paymentId}/status`, { headers });
+    const body = await res.json();
+    if (!res.ok || !body.success) {
+      throw new Error(body?.error?.message || body?.error || 'Failed to check cryptocurrency payment status.');
+    }
+    return body.data;
+  }
+
+  /**
+   * POST /api/payments/crypto/:paymentId/simulate
+   * Sandbox simulation trigger for instant test verification.
+   */
+  static async simulateCrypto(paymentId: string, outcome: string = 'paid'): Promise<any> {
+    let headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      const authHeaders = await this.getAuthHeaders();
+      headers = { ...headers, ...authHeaders };
+    } catch {
+      // Continue
+    }
+
+    const res = await fetch(`/api/payments/crypto/${paymentId}/simulate`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ outcome }),
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success) {
+      throw new Error(body?.error?.message || body?.error || 'Crypto simulation failed.');
+    }
+    return body.data;
+  }
 }

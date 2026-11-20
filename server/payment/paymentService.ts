@@ -93,40 +93,36 @@ export class PaymentService {
     }
 
     // 5. Prevent Duplicate Active Payment Intents for the same order
-    try {
-      const paymentsCol = collection(db, 'payments');
-      const q = query(
-        paymentsCol,
-        where('orderId', '==', input.orderId)
-      );
-      const activeSnaps = await getDocs(q);
-      for (const d of activeSnaps.docs) {
-        const p = d.data() as any;
-        if (p.status === 'pending' || p.status === 'requires_action' || p.status === 'processing') {
-          // Return the existing active payment intent to prevent duplicate charges
-          return {
-            paymentIntent: {
-              id: d.id,
-              orderId: p.orderId,
-              customerUid: p.customerUid,
-              amount: p.amount,
-              currency: p.currency,
-              status: p.status,
-              methodType: p.method || p.methodType || 'card',
-              provider: p.provider || 'sandbox',
-              clientSecret: p.clientSecret || `sbx_sec_${d.id}`,
-              attemptsCount: p.attemptsCount || 1,
-              actionRequired: p.actionRequired,
-              sandboxMode: true,
-              safeMetadata: p.safeMetadata,
-              createdAt: p.createdAt,
-              updatedAt: p.updatedAt,
-            },
-          };
-        }
+    const paymentsCol = collection(db, 'payments');
+    const q = query(
+      paymentsCol,
+      where('orderId', '==', input.orderId)
+    );
+    const activeSnaps = await getDocs(q);
+    for (const d of activeSnaps.docs) {
+      const p = d.data() as any;
+      if (p.status === 'pending' || p.status === 'requires_action' || p.status === 'processing') {
+        // Return the existing active payment intent to prevent duplicate charges
+        return {
+          paymentIntent: {
+            id: d.id,
+            orderId: p.orderId,
+            customerUid: p.customerUid,
+            amount: p.amount,
+            currency: p.currency,
+            status: p.status,
+            methodType: p.method || p.methodType || 'card',
+            provider: p.provider || 'sandbox',
+            clientSecret: p.clientSecret || `sbx_sec_${d.id}`,
+            attemptsCount: p.attemptsCount || 1,
+            actionRequired: p.actionRequired,
+            sandboxMode: true,
+            safeMetadata: p.safeMetadata,
+            createdAt: p.createdAt,
+            updatedAt: p.updatedAt,
+          },
+        };
       }
-    } catch {
-      // Continue if query fails in isolated test sandbox
     }
 
     // 6. Authoritative Order Total & Currency (NEVER trust client payload)
@@ -194,12 +190,8 @@ export class PaymentService {
     };
 
     // 10. Persist Payment Record to Firestore (/payments/{intentId})
-    try {
-      const paymentRef = doc(db, 'payments', intentId);
-      await setDoc(paymentRef, paymentIntent);
-    } catch (err) {
-      console.warn(`[PaymentService] Offline save for payment ${intentId}`);
-    }
+    const paymentRef = doc(db, 'payments', intentId);
+    await setDoc(paymentRef, paymentIntent);
 
     // 11. Write Append-Only Audit Event
     await PaymentEventService.recordEvent({
@@ -312,25 +304,19 @@ export class PaymentService {
     };
 
     // 4. Update Payment in Firestore
-    try {
-      await setDoc(paymentRef, updatedPayment);
-    } catch {
-      // Local fallback
-    }
+    await setDoc(paymentRef, updatedPayment);
 
     // 5. Synchronize with Phase 4B Order Payment Status
     const orderRef = doc(db, 'orders', current.orderId);
     let newOrderStatus = 'Processing';
 
     if (providerResult.status === 'paid') {
-      try {
-        await updateDoc(orderRef, {
-          paymentStatus: 'paid',
-          updatedAt: now,
-        });
-      } catch {
-        // Local fallback
-      }
+      await updateDoc(orderRef, {
+        paymentStatus: 'paid',
+        updatedAt: now,
+      });
+
+      await SellerLedgerService.confirmPaymentSettlement(current.orderId);
 
       await PaymentEventService.recordEvent({
         paymentId: intentId,
@@ -361,14 +347,10 @@ export class PaymentService {
         },
       });
     } else if (providerResult.status === 'failed') {
-      try {
-        await updateDoc(orderRef, {
-          paymentStatus: 'failed',
-          updatedAt: now,
-        });
-      } catch {
-        // Local fallback
-      }
+      await updateDoc(orderRef, {
+        paymentStatus: 'failed',
+        updatedAt: now,
+      });
 
       await PaymentEventService.recordEvent({
         paymentId: intentId,
@@ -441,19 +423,17 @@ export class PaymentService {
       updatedAt: now,
     };
 
-    try {
-      await setDoc(paymentRef, updatedPayment);
-    } catch {}
+    await setDoc(paymentRef, updatedPayment);
 
     // Update order
     const orderRef = doc(db, 'orders', current.orderId);
     if (providerResult.status === 'paid') {
-      try {
-        await updateDoc(orderRef, {
-          paymentStatus: 'paid',
-          updatedAt: now,
-        });
-      } catch {}
+      await updateDoc(orderRef, {
+        paymentStatus: 'paid',
+        updatedAt: now,
+      });
+
+      await SellerLedgerService.confirmPaymentSettlement(current.orderId);
 
       await PaymentEventService.recordEvent({
         paymentId: intentId,
@@ -466,12 +446,10 @@ export class PaymentService {
         provider: current.provider || 'sandbox',
       });
     } else {
-      try {
-        await updateDoc(orderRef, {
-          paymentStatus: 'failed',
-          updatedAt: now,
-        });
-      } catch {}
+      await updateDoc(orderRef, {
+        paymentStatus: 'failed',
+        updatedAt: now,
+      });
 
       await PaymentEventService.recordEvent({
         paymentId: intentId,
@@ -527,9 +505,7 @@ export class PaymentService {
       updatedAt: now,
     };
 
-    try {
-      await setDoc(paymentRef, updatedPayment);
-    } catch {}
+    await setDoc(paymentRef, updatedPayment);
 
     await PaymentEventService.recordEvent({
       paymentId: intentId,
@@ -625,24 +601,23 @@ export class PaymentService {
       updatedAt: now,
     };
 
-    try {
-      await setDoc(paymentRef, updatedPayment);
-      const orderRef = doc(db, 'orders', current.orderId);
-      const orderUpdate: Record<string, any> = {
-        paymentStatus: targetStatus,
-        updatedAt: now,
-      };
-      if (targetStatus === 'refunded') {
-        orderUpdate.status = 'Cancelled';
-      }
-      await updateDoc(orderRef, orderUpdate);
-    } catch {}
+    await setDoc(paymentRef, updatedPayment);
+    const orderRef = doc(db, 'orders', current.orderId);
+    const orderUpdate: Record<string, any> = {
+      paymentStatus: targetStatus,
+      updatedAt: now,
+    };
+    if (targetStatus === 'refunded') {
+      orderUpdate.status = 'Cancelled';
+    }
+    await updateDoc(orderRef, orderUpdate);
 
     // Record server-authoritative refund adjustment in seller ledger idempotently
     try {
-      await SellerLedgerService.recordOrderAdjustment(current.orderId, 'refund_adjustment', reason);
-    } catch (ledgerErr) {
-      console.warn('[PaymentService] Non-blocking refund adjustment warning:', ledgerErr);
+      const refundRatio = current.amount > 0 ? Math.min(1, totalRefunded / current.amount) : 1;
+      await SellerLedgerService.recordOrderAdjustment(current.orderId, 'refund_adjustment', reason, refundRatio);
+    } catch (ledgerErr: any) {
+      console.warn('[PaymentService] Non-blocking refund adjustment warning:', ledgerErr?.message || 'Unknown error');
     }
 
     await PaymentEventService.recordEvent({

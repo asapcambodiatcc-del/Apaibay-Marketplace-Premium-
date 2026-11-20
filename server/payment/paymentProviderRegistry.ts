@@ -4,6 +4,7 @@ import { defaultSandboxProvider } from './providers/sandboxProvider';
 import { defaultAbaPaywayProvider, AbaPaywayProvider } from './providers/abaPaywayProvider';
 import { defaultBakongKhqrProvider, BakongKhqrProvider } from './providers/bakongKhqrProvider';
 import { defaultWingProvider, WingProvider } from './providers/wingProvider';
+import { defaultCryptoPaymentProvider, CryptoPaymentProvider } from './providers/cryptoProvider';
 import { PaymentConfigService } from './paymentConfig';
 
 export class PaymentProviderRegistry {
@@ -13,6 +14,8 @@ export class PaymentProviderRegistry {
     ['khqr', defaultBakongKhqrProvider],
     ['wing', defaultWingProvider],
     ['card', defaultAbaPaywayProvider], // Standard card gateway in Cambodia routes through ABA PayWay
+    ['nowpayments', defaultCryptoPaymentProvider],
+    ['crypto_sandbox', defaultCryptoPaymentProvider],
   ]);
 
   /**
@@ -28,6 +31,8 @@ export class PaymentProviderRegistry {
         return 'wing';
       case 'card':
         return PaymentConfigService.isProduction() ? 'aba_payway' : 'sandbox';
+      case 'crypto':
+        return 'nowpayments';
       case 'cod':
         return 'manual';
       case 'stripe':

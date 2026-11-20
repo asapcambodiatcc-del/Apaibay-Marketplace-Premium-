@@ -3,12 +3,8 @@ import {
   doc,
   getDocs,
   getDoc,
-  setDoc,
-  query,
-  where,
-  serverTimestamp,
 } from 'firebase/firestore';
-import { db } from '../../services/firebase/config';
+import { db, auth } from '../../services/firebase/config';
 import { handleFirestoreError, OperationType } from '../../services/firebase/firestoreErrors';
 import { Product, CategoryItem } from '../../types';
 import { ProductRepository, ProductFilters } from '../ProductRepository';
@@ -143,23 +139,38 @@ export class FirebaseProductRepository implements ProductRepository {
   }
 
   async create(productData: Omit<Product, 'id'>): Promise<Product> {
-    const id = `prod_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-    const newProduct: Product = {
-      ...productData,
-      id,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    try {
-      const docRef = doc(db, PRODUCTS_COLLECTION, id);
-      await setDoc(docRef, newProduct);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, `${PRODUCTS_COLLECTION}/${id}`);
+    const current = auth.currentUser;
+    if (!current) {
+      throw new Error('Authentication required to create a product listing.');
     }
 
-    this.memoryCache.unshift(newProduct);
-    return newProduct;
+    const token = await current.getIdToken();
+    const res = await fetch('/api/commerce/products', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        name: productData.name,
+        price: productData.price,
+        originalPrice: productData.originalPrice,
+        category: productData.category,
+        brand: productData.brand,
+        image: productData.image,
+        description: productData.description,
+        stock: productData.stock ?? productData.stockCount ?? 25,
+      }),
+    });
+
+    const body = await res.json();
+    if (!res.ok || !body.success || !body.product) {
+      throw new Error(body?.error?.message || 'Only verified sellers or administrators may publish products.');
+    }
+
+    const createdProduct = body.product as Product;
+    this.memoryCache.unshift(createdProduct);
+    return createdProduct;
   }
 
   async getCategories(): Promise<CategoryItem[]> {

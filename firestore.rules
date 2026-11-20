@@ -12,47 +12,159 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function isVerifiedBootstrapAdmin() {
+      return isSignedIn() &&
+        request.auth.token.email == 'asapcambodia.tcc@gmail.com' &&
+        request.auth.token.email_verified == true;
+    }
+
     function isAdmin() {
-      return isSignedIn() && (
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
-        request.auth.token.email == 'asapcambodia.tcc@gmail.com'
+      return isVerifiedBootstrapAdmin() || (
+        isEmailVerified() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role in ['SUPER_ADMIN', 'ADMIN']
       );
+    }
+
+    function isSuperAdmin() {
+      return isVerifiedBootstrapAdmin() || (
+        isEmailVerified() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'SUPER_ADMIN'
+      );
+    }
+
+    function isKycReviewer() {
+      return isAdmin();
+    }
+
+    function isFinanceStaff() {
+      return isAdmin() || (
+        isEmailVerified() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'FINANCE_MANAGER'
+      );
+    }
+
+    function isSupportStaff() {
+      return isAdmin() || (
+        isEmailVerified() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'SUPPORT_STAFF'
+      );
+    }
+
+    function isVerifiedSeller(uid) {
+      return exists(/databases/$(database)/documents/sellers/$(uid)) &&
+        get(/databases/$(database)/documents/sellers/$(uid)).data.verificationStatus == 'verified';
+    }
+
+    function isNotSuspended(uid) {
+      return !exists(/databases/$(database)/documents/users/$(uid)) ||
+        get(/databases/$(database)/documents/users/$(uid)).data.status != 'suspended';
     }
 
     function isValidId(id) {
       return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    // Users collection
+    function hasNoSellerPii(data) {
+      return !data.keys().hasAny([
+        'contactInfo',
+        'businessAddress',
+        'documents',
+        'residentialOrBusinessAddress',
+        'phone',
+        'email',
+        'contactEmail',
+        'ownerEmail',
+        'reviewedBy',
+        'reviewedByEmail',
+        'reviewedByUid',
+        'reviewerEmail',
+        'maskedPhone',
+        'maskedDocumentNumber',
+        'identityNumber'
+      ]) &&
+      (
+        !('ownerName' in data) ||
+        data.ownerName == null ||
+        (
+          data.ownerName is string &&
+          !data.ownerName.matches('.*[^\\s@]+@[^\\s@]+\\.[^\\s@]+.*')
+        )
+      );
+    }
+
+    // Users collection (No self-assigned seller/admin roles; status/role updates locked to server/admin)
     match /users/{uid} {
       allow get: if isOwner(uid) || isAdmin();
       allow list: if isAdmin();
-      allow create: if isOwner(uid)
-        && request.resource.data.uid == uid
-        && (request.resource.data.role == 'customer' || request.resource.data.role == 'seller' || isAdmin());
+      allow create: if (
+        isOwner(uid) &&
+        isValidId(uid) &&
+        request.resource.data.uid == uid &&
+        request.resource.data.role == 'customer' &&
+        (!('status' in request.resource.data) || request.resource.data.status == 'active') &&
+        !request.resource.data.keys().hasAny(['adminRole', 'suspendedAt', 'statusUpdatedBy']) &&
+        (!('name' in request.resource.data) || (request.resource.data.name is string && request.resource.data.name.size() <= 150)) &&
+        (!('email' in request.resource.data) || (request.resource.data.email is string && request.resource.data.email.size() <= 254))
+      ) || isAdmin();
       allow update: if (
-        isOwner(uid)
-        && request.resource.data.uid == uid
-        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']) || isAdmin())
+        isOwner(uid) &&
+        request.resource.data.uid == uid &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'role', 'status', 'accountStatus', 'adminRole', 'suspendedAt', 'statusUpdatedBy'
+        ]) &&
+        (!('name' in request.resource.data) || (request.resource.data.name is string && request.resource.data.name.size() <= 150)) &&
+        (!('displayName' in request.resource.data) || (request.resource.data.displayName is string && request.resource.data.displayName.size() <= 150)) &&
+        (!('phone' in request.resource.data) || (request.resource.data.phone is string && request.resource.data.phone.size() <= 40))
       ) || isAdmin();
       allow delete: if isAdmin();
     }
 
-    // Products collection (Public catalog reads, Seller-scoped writes)
+    // Products collection (Public catalog reads, Verified-Seller / Admin writes with schema validation)
     match /products/{productId} {
       allow read: if true;
-      allow create: if isSignedIn() && (
-        request.resource.data.sellerId == request.auth.uid || isAdmin()
+      allow create: if isValidId(productId) && (
+        isAdmin() ||
+        (
+          isSignedIn() &&
+          isVerifiedSeller(request.auth.uid) &&
+          isNotSuspended(request.auth.uid) &&
+          request.resource.data.sellerId == request.auth.uid &&
+          request.resource.data.name is string &&
+          request.resource.data.name.size() > 0 &&
+          request.resource.data.name.size() <= 200 &&
+          request.resource.data.price is number &&
+          request.resource.data.price >= 0
+        )
       );
-      allow update: if isSignedIn() && (
-        resource.data.sellerId == request.auth.uid || isAdmin()
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        isVerifiedSeller(request.auth.uid) &&
+        isNotSuspended(request.auth.uid) &&
+        resource.data.sellerId == request.auth.uid &&
+        request.resource.data.sellerId == request.auth.uid &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 200 &&
+        request.resource.data.price is number &&
+        request.resource.data.price >= 0
       );
-      allow delete: if isSignedIn() && (
-        resource.data.sellerId == request.auth.uid || isAdmin()
+      allow delete: if isAdmin() || (
+        isSignedIn() &&
+        isVerifiedSeller(request.auth.uid) &&
+        isNotSuspended(request.auth.uid) &&
+        resource.data.sellerId == request.auth.uid
       );
     }
 
@@ -62,47 +174,93 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Sellers collection
+    // Sellers collection (Public storefront summary ONLY — never store PII or KYC documents here)
     match /sellers/{sellerId} {
       allow read: if true;
-      allow create: if isSignedIn() && (
-        (request.resource.data.ownerUid == request.auth.uid && request.resource.data.verificationStatus == 'pending') ||
-        isAdmin()
-      );
-      allow update: if (
-        isAdmin() ||
+      allow create: if isValidId(sellerId) &&
+        hasNoSellerPii(request.resource.data) &&
+        request.resource.data.storeName is string &&
+        request.resource.data.storeName.size() > 0 &&
+        request.resource.data.storeName.size() <= 150 &&
+        (
+          (
+            isSignedIn() &&
+            sellerId == request.auth.uid &&
+            request.resource.data.ownerUid == request.auth.uid &&
+            request.resource.data.verificationStatus == 'pending' &&
+            !request.resource.data.keys().hasAny(['reviewedAt', 'reviewedBy', 'kycExpiresAt', 'verifiedAt'])
+          ) ||
+          isKycReviewer()
+        );
+      allow update: if hasNoSellerPii(request.resource.data) && (
+        isKycReviewer() ||
         (
           isSignedIn() &&
           resource.data.ownerUid == request.auth.uid &&
           request.resource.data.ownerUid == request.auth.uid &&
+          request.resource.data.storeName is string &&
+          request.resource.data.storeName.size() > 0 &&
+          request.resource.data.storeName.size() <= 150 &&
           (
-            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['verificationStatus', 'ownerUid', 'reviewedAt', 'reviewedBy']) ||
-            (request.resource.data.verificationStatus == 'pending' && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ownerUid', 'reviewedAt', 'reviewedBy']))
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+              'verificationStatus', 'kycStatus', 'kycExpiresAt', 'phoneVerificationStatus',
+              'identityVerificationStatus', 'payoutOwnershipVerificationStatus',
+              'ownerUid', 'reviewedAt', 'reviewedBy'
+            ]) ||
+            (
+              request.resource.data.verificationStatus == 'pending' &&
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+                'ownerUid', 'reviewedAt', 'reviewedBy', 'kycExpiresAt',
+                'phoneVerificationStatus', 'identityVerificationStatus', 'payoutOwnershipVerificationStatus'
+              ])
+            )
           )
         )
       );
-      allow delete: if isAdmin();
+      allow delete: if isKycReviewer();
+    }
+
+    // Seller KYC & Private Verification Records (Strictly isolated from public /sellers)
+    match /seller_kyc/{sellerId} {
+      allow get: if isOwner(sellerId) || isKycReviewer();
+      allow list: if isKycReviewer();
+      allow write: if false; // All KYC submissions, masking, document metadata, and decisions strictly managed by trusted backend
+
+      match /history/{eventId} {
+        allow get, list: if isOwner(sellerId) || isKycReviewer();
+        allow write: if false; // Immutable append-only KYC audit trail
+      }
     }
 
     // Seller Ledger collection (Server-authoritative commission and earnings accounting)
     match /sellerLedger/{ledgerId} {
       allow get, list: if isSignedIn() && (
-        resource.data.sellerId == request.auth.uid || isAdmin()
+        resource.data.sellerId == request.auth.uid || isFinanceStaff()
       );
       allow write: if false; // All ledger records, sales commissions, and refund adjustments strictly managed by trusted backend
     }
 
-    // Orders collection (Authoritative: creation strictly routed through trusted backend)
+    // Seller Payout Requests collection (Server-authoritative settlement and withdrawal requests)
+    match /seller_payouts/{payoutId} {
+      allow get, list: if isSignedIn() && (
+        resource.data.sellerId == request.auth.uid ||
+        resource.data.ownerUid == request.auth.uid ||
+        isFinanceStaff()
+      );
+      allow write: if false; // All payout creations, validations, reviews, and status updates strictly managed by trusted backend
+    }
+
+    // Orders collection (Authoritative: creations & lifecycle transitions strictly routed through trusted backend APIs)
     match /orders/{orderId} {
       allow get: if isSignedIn() && (
-        resource.data.customerUid == request.auth.uid || isAdmin()
+        resource.data.customerUid == request.auth.uid || isSupportStaff() || isFinanceStaff()
       );
       allow list: if isSignedIn() && (
-        resource.data.customerUid == request.auth.uid || isAdmin()
+        resource.data.customerUid == request.auth.uid || isSupportStaff() || isFinanceStaff()
       );
       allow create: if false; // All order creation MUST occur via trusted backend (POST /api/commerce/orders)
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow update: if false; // All order transitions MUST pass server-side state machine validation & ledger hooks
+      allow delete: if false; // Orders are immutable audit/financial records
     }
 
     // Server-only idempotency keys
@@ -110,33 +268,51 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Payments collection (Read restricted to owner or admin, write strictly blocked for clients)
+    // Payments collection (Read restricted to owner or finance/admin, write strictly blocked for clients)
     match /payments/{paymentId} {
       allow get: if isSignedIn() && (
-        resource.data.customerUid == request.auth.uid || isAdmin()
+        resource.data.customerUid == request.auth.uid || isFinanceStaff()
       );
       allow list: if isSignedIn() && (
-        resource.data.customerUid == request.auth.uid || isAdmin()
+        resource.data.customerUid == request.auth.uid || isFinanceStaff()
       );
       allow create: if false;
       allow update, delete: if false;
       allow write: if false; // All payments, state transitions, refunds MUST be written by trusted backend payment state machine
     }
 
-    // Payment audit events (Read restricted to actor or admin, write strictly blocked for clients)
+    // Payment audit events (Read restricted to actor or finance/admin, write strictly blocked for clients)
     match /paymentEvents/{eventId} {
       allow get: if isSignedIn() && (
-        resource.data.actorUid == request.auth.uid || isAdmin()
+        resource.data.actorUid == request.auth.uid || isFinanceStaff()
       );
-      allow list: if isAdmin();
+      allow list: if isFinanceStaff();
       allow write: if false; // Append-only audit logs can only be created by trusted backend
     }
 
-    // Addresses collection
+    // Addresses collection (Owner-scoped with schema validation)
     match /addresses/{addressId} {
       allow get, list: if isSignedIn() && resource.data.uid == request.auth.uid;
-      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
-      allow update, delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow create: if isSignedIn() &&
+        isValidId(addressId) &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.fullName is string &&
+        request.resource.data.fullName.size() > 0 &&
+        request.resource.data.fullName.size() <= 150 &&
+        request.resource.data.street is string &&
+        request.resource.data.street.size() <= 300 &&
+        request.resource.data.city is string &&
+        request.resource.data.city.size() <= 120 &&
+        request.resource.data.country is string &&
+        request.resource.data.country.size() <= 100 &&
+        request.resource.data.phone is string &&
+        request.resource.data.phone.size() <= 40;
+      allow update: if isSignedIn() &&
+        resource.data.uid == request.auth.uid &&
+        request.resource.data.uid == request.auth.uid &&
+        (!('fullName' in request.resource.data) || (request.resource.data.fullName is string && request.resource.data.fullName.size() <= 150)) &&
+        (!('street' in request.resource.data) || (request.resource.data.street is string && request.resource.data.street.size() <= 300));
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
     }
 
     // Carts collection (Private per authenticated user)
@@ -149,11 +325,32 @@ service cloud.firestore {
       allow read, write: if isOwner(uid) || isAdmin();
     }
 
-    // Reviews collection (Public read, verified author write)
+    // Reviews collection (Public read, verified author write with rating/comment bounds)
     match /reviews/{reviewId} {
       allow read: if true;
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+        isValidId(reviewId) &&
+        isNotSuspended(request.auth.uid) &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.rating is number &&
+        request.resource.data.rating >= 1 &&
+        request.resource.data.rating <= 5 &&
+        request.resource.data.comment is string &&
+        request.resource.data.comment.size() > 0 &&
+        request.resource.data.comment.size() <= 2000;
+      allow update: if isSignedIn() && (
+        (
+          resource.data.userId == request.auth.uid &&
+          request.resource.data.userId == request.auth.uid &&
+          request.resource.data.rating is number &&
+          request.resource.data.rating >= 1 &&
+          request.resource.data.rating <= 5 &&
+          request.resource.data.comment is string &&
+          request.resource.data.comment.size() > 0 &&
+          request.resource.data.comment.size() <= 2000
+        ) || isAdmin()
+      );
+      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     // Coupons collection (Public read for checkout coupon validation, Admin write)
@@ -170,11 +367,52 @@ service cloud.firestore {
       allow create, delete: if isAdmin();
     }
 
+    // Admin Notifications collection (Super Admin access; non-admin strictly limited to own seller_app_{uid})
+    match /admin_notifications/{notificationId} {
+      allow get, list: if isAdmin();
+      allow update: if isAdmin();
+      allow create: if (
+        isAdmin() ||
+        (
+          isSignedIn() &&
+          notificationId == ('seller_app_' + request.auth.uid) &&
+          request.resource.data.id == notificationId &&
+          request.resource.data.applicantUid == request.auth.uid &&
+          request.resource.data.type == 'seller_application' &&
+          request.resource.data.read == false &&
+          request.resource.data.shopName is string &&
+          request.resource.data.shopName.size() > 0 &&
+          request.resource.data.shopName.size() <= 150
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
     // Admins collection (Admin identity lookup)
     match /admins/{uid} {
       allow get: if isOwner(uid) || isAdmin();
       allow list: if isAdmin();
-      allow write: if false;
+      allow write: if false; // Role modifications strictly managed via authoritative Super Admin API
+    }
+
+    // Administrative Activity Audit Logs (Append-only, strictly immutable)
+    match /admin_audit_logs/{logId} {
+      allow get, list: if isFinanceStaff();
+      allow write: if false; // All audit entries authoritatively recorded by backend
+    }
+
+    // Order Disputes collection (Customer protection & Admin/Support resolution)
+    match /order_disputes/{disputeId} {
+      allow get: if isSignedIn() && (
+        resource.data.customerUid == request.auth.uid ||
+        resource.data.sellerId == request.auth.uid ||
+        isSupportStaff() ||
+        isFinanceStaff()
+      );
+      allow list: if isSupportStaff() || isFinanceStaff(); // Strictly restricted: no open client-side dispute enumeration
+      allow create: if false;   // Submissions must pass through POST /api/commerce/disputes
+      allow update: if false;   // Reviews and status updates must pass through authorized admin API
+      allow delete: if false;   // Disputes cannot be erased
     }
   }
 }

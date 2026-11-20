@@ -1,0 +1,343 @@
+# Manual-Only Production Legacy Seller PII Read-Only Audit
+#
+# Required Manual GitHub Environment Configuration (not auto-provisioned):
+#   1. Create GitHub Environment: "production-audit" in Repository Settings -> Environments.
+#   2. Enable "Required reviewers" on "production-audit" for mandatory manual approval before job start.
+#   3. Store BOTH secrets below strictly as Environment secrets under "production-audit" (NOT repo secrets):
+#      - FIREBASE_AUDIT_SERVICE_ACCOUNT_JSON (dedicated read-only roles/datastore.viewer SA for apaibay-marketplace-premium)
+#      - SELLER_AUDIT_HMAC_SECRET (dedicated >=16-char random secret used solely for Seller ID HMAC-SHA256 hashing)
+
+name: Firebase Legacy Seller PII Audit (Read-Only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-legacy-seller-pii-audit
+  cancel-in-progress: false
+
+jobs:
+  seller-pii-readonly-audit:
+    name: Read-Only Legacy Seller PII Audit
+    runs-on: ubuntu-latest
+    environment: production-audit
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js LTS
+        uses: actions/setup-node@1d0ff469b62b6d0ad9b0af0fb3b1e40be53ce9b9 # v4.2.0
+        with:
+          node-version: '22'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@4bc047ad259df6fc24a6c9b0f9a0cb08cf17fbe5 # v2.0.1
+        with:
+          bun-version: '1.4.4'
+
+      - name: Install frozen dependencies without lifecycle scripts
+        # No Firebase or HMAC credentials are exposed during dependency installation.
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Pre-flight verify credentials, HMAC secret, target IDs, and read-only audit script
+        env:
+          FIREBASE_AUDIT_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_AUDIT_SERVICE_ACCOUNT_JSON }}
+          SELLER_AUDIT_HMAC_SECRET: ${{ secrets.SELLER_AUDIT_HMAC_SECRET }}
+          EXPECTED_PROJECT_ID: apaibay-marketplace-premium
+          EXPECTED_DATABASE_ID: ai-studio-apaibaymarketpla-99b738bb-1596-4812-bdf8-877c3a04a892
+        run: |
+          node <<'EOF'
+          const fs = require('fs');
+          const path = require('path');
+
+          const expectedProjectId = process.env.EXPECTED_PROJECT_ID;
+          const expectedDbId = process.env.EXPECTED_DATABASE_ID;
+
+          // 1. Validate dedicated service account secret without ever logging secret material
+          const rawSecret = (process.env.FIREBASE_AUDIT_SERVICE_ACCOUNT_JSON || '').trim();
+          if (!rawSecret) {
+            console.error('ERROR [AUDIT_CREDENTIALS_MISSING]: Required Environment secret FIREBASE_AUDIT_SERVICE_ACCOUNT_JSON is missing or empty.');
+            process.exit(1);
+          }
+
+          let parsed;
+          try {
+            const decoded = rawSecret.startsWith('{')
+              ? rawSecret
+              : Buffer.from(rawSecret, 'base64').toString('utf8');
+            parsed = JSON.parse(decoded);
+          } catch {
+            console.error('ERROR [AUDIT_CREDENTIALS_MALFORMED]: FIREBASE_AUDIT_SERVICE_ACCOUNT_JSON is not valid JSON or base64-encoded JSON.');
+            process.exit(1);
+          }
+
+          if (
+            !parsed ||
+            typeof parsed !== 'object' ||
+            parsed.type !== 'service_account' ||
+            typeof parsed.project_id !== 'string' ||
+            !parsed.project_id.trim() ||
+            typeof parsed.private_key !== 'string' ||
+            !parsed.private_key.includes('BEGIN') ||
+            typeof parsed.client_email !== 'string' ||
+            !parsed.client_email.includes('@')
+          ) {
+            console.error('ERROR [AUDIT_CREDENTIALS_MALFORMED]: FIREBASE_AUDIT_SERVICE_ACCOUNT_JSON is missing required service account fields.');
+            process.exit(1);
+          }
+
+          if (parsed.project_id.trim() !== expectedProjectId) {
+            console.error(
+              `ERROR [AUDIT_TARGET_PROJECT_MISMATCH]: Credential project_id ('${parsed.project_id.trim()}') does not match expected '${expectedProjectId}'.`
+            );
+            process.exit(1);
+          }
+
+          // 2. Validate dedicated SELLER_AUDIT_HMAC_SECRET without ever printing or reusing Firebase credentials
+          const hmacSecret = (process.env.SELLER_AUDIT_HMAC_SECRET || '').trim();
+          if (!hmacSecret) {
+            console.error('ERROR [AUDIT_HMAC_SECRET_MISSING]: Required Environment secret SELLER_AUDIT_HMAC_SECRET is missing or empty.');
+            process.exit(1);
+          }
+          if (hmacSecret.length < 16) {
+            console.error('ERROR [AUDIT_HMAC_SECRET_INVALID]: SELLER_AUDIT_HMAC_SECRET must be at least 16 characters.');
+            process.exit(1);
+          }
+          const credentialValues = [
+            rawSecret,
+            parsed.private_key,
+            parsed.private_key_id,
+            parsed.client_email,
+          ].filter((v) => typeof v === 'string' && v.trim());
+          if (credentialValues.some((v) => hmacSecret === v.trim() || v.includes(hmacSecret))) {
+            console.error('ERROR [AUDIT_HMAC_SECRET_REUSE_FORBIDDEN]: SELLER_AUDIT_HMAC_SECRET cannot reuse Firebase credential material.');
+            process.exit(1);
+          }
+
+          // 3. Verify repository Firebase config matches exact target project & named database
+          const appletConfigPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
+          const appletConfig = JSON.parse(fs.readFileSync(appletConfigPath, 'utf8'));
+          if (appletConfig.projectId !== expectedProjectId) {
+            console.error(
+              `ERROR [AUDIT_TARGET_PROJECT_MISMATCH]: firebase-applet-config.json projectId ('${appletConfig.projectId}') does not match '${expectedProjectId}'.`
+            );
+            process.exit(1);
+          }
+          if (appletConfig.firestoreDatabaseId !== expectedDbId) {
+            console.error(
+              `ERROR [AUDIT_TARGET_DATABASE_MISMATCH]: firebase-applet-config.json firestoreDatabaseId ('${appletConfig.firestoreDatabaseId}') does not match '${expectedDbId}'.`
+            );
+            process.exit(1);
+          }
+
+          // 4. Static read-only, no-ADC, and HMAC-anonymization guards on scripts/audit-legacy-seller-pii.ts
+          const auditScriptPath = path.resolve(process.cwd(), 'scripts/audit-legacy-seller-pii.ts');
+          const scriptSrc = fs.readFileSync(auditScriptPath, 'utf8');
+
+          const requiredGuards = [
+            "mode: 'DRY_RUN_ONLY'",
+            "argv.includes('--commit')",
+            "argv.includes('--mutate')",
+            'getFirestore(app, ctx.firestoreDatabaseId)',
+            "createHmac('sha256'",
+            'FIREBASE_AUDIT_SERVICE_ACCOUNT_JSON',
+          ];
+          for (const guard of requiredGuards) {
+            if (!scriptSrc.includes(guard)) {
+              console.error(`ERROR [AUDIT_SCRIPT_GUARD_MISSING]: Missing expected guard '${guard}'.`);
+              process.exit(1);
+            }
+          }
+
+          const forbiddenPatterns = [
+            /\bapplicationDefault\b/,
+            /\b(setDoc|updateDoc|deleteDoc|addDoc|WriteBatch|bulkWriter|runTransaction)\b/,
+            /\.(batch|commit|delete|create)\s*\(/,
+            /(?:doc\([^)]*\)|firestore|db)\s*\.\s*(set|update|delete|create)\s*\(/,
+          ];
+          for (const pattern of forbiddenPatterns) {
+            if (pattern.test(scriptSrc)) {
+              console.error(`ERROR [AUDIT_SCRIPT_FORBIDDEN_PATTERN]: Audit script matched forbidden pattern ${pattern}.`);
+              process.exit(1);
+            }
+          }
+
+          console.log(
+            `Pre-flight verified: env='production-audit', project='${expectedProjectId}', database='${expectedDbId}', HMAC+SA+read-only guards intact.`
+          );
+          EOF
+
+      - name: Run read-only legacy Seller PII audit
+        env:
+          APP_ENV: production
+          NODE_ENV: production
+          ALLOW_LIVE_READONLY_AUDIT: '1'
+          FIREBASE_PROJECT_ID: apaibay-marketplace-premium
+          FIREBASE_FIRESTORE_DATABASE_ID: ai-studio-apaibaymarketpla-99b738bb-1596-4812-bdf8-877c3a04a892
+          FIREBASE_STORAGE_BUCKET: apaibay-marketplace-premium.firebasestorage.app
+          FIREBASE_AUTH_DOMAIN: apaibay-marketplace-premium.firebaseapp.com
+          FIREBASE_AUDIT_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_AUDIT_SERVICE_ACCOUNT_JSON }}
+          SELLER_AUDIT_HMAC_SECRET: ${{ secrets.SELLER_AUDIT_HMAC_SECRET }}
+        run: |
+          unset FIRESTORE_EMULATOR_HOST
+          unset FIREBASE_SERVICE_ACCOUNT_JSON
+          unset GOOGLE_APPLICATION_CREDENTIALS
+          set +e
+          npx tsx scripts/audit-legacy-seller-pii.ts --dry-run \
+            >"$RUNNER_TEMP/seller-pii-audit-report.json" \
+            2>"$RUNNER_TEMP/seller-pii-audit-stderr.log"
+          AUDIT_EXIT=$?
+          set -e
+          if [ "$AUDIT_EXIT" -ne 0 ]; then
+            node <<'EOF'
+          const fs = require('fs');
+          const path = require('path');
+          const stderrPath = path.join(process.env.RUNNER_TEMP, 'seller-pii-audit-stderr.log');
+          let text = fs.existsSync(stderrPath) ? fs.readFileSync(stderrPath, 'utf8') : 'Audit process exited non-zero without stderr.';
+          for (const secret of [process.env.SELLER_AUDIT_HMAC_SECRET || '', process.env.FIREBASE_AUDIT_SERVICE_ACCOUNT_JSON || '']) {
+            const s = secret.trim();
+            if (s.length >= 4) {
+              text = text.split(s).join('[REDACTED_SECRET]');
+            }
+          }
+          text = text
+            .replace(/-----BEGIN [A-Z0-9 ]+-----[\s\S]*?-----END [A-Z0-9 ]+-----/g, '[REDACTED_PEM]')
+            .replace(/"(private_key|private_key_id|client_email|client_id|contactEmail|ownerEmail|email|phone|maskedPhone|businessAddress|residentialOrBusinessAddress|identityNumber|reviewedBy|reviewedByEmail|reviewedByUid|ownerName|legalFullName)"\s*:\s*"[^"]*"/gi, '"$1":"[REDACTED]"')
+            .replace(/[^\s@"'`]+@[^\s@"'`]+\.[^\s@"'`]+/g, '[REDACTED_EMAIL]')
+            .replace(/\/(sellers|seller_kyc|users|admins)\/[A-Za-z0-9_\-]+/g, '/$1/[REDACTED_ID]')
+            .replace(/\+?\d[\d\s().-]{6,}\d/g, '[REDACTED_NUMBER]');
+          const safeLines = text
+            .split(/\r?\n/)
+            .map((l) => l.trim())
+            .filter(Boolean)
+            .slice(0, 8)
+            .map((l) => (l.length > 220 ? `${l.slice(0, 217)}...` : l));
+          console.error('AUDIT_EXECUTION_FAILED (redacted stderr summary):');
+          for (const line of safeLines) {
+            console.error(`  ${line}`);
+          }
+          EOF
+            exit "$AUDIT_EXIT"
+          fi
+
+      - name: Validate audit output and publish safe anonymized report
+        env:
+          EXPECTED_PROJECT_ID: apaibay-marketplace-premium
+          EXPECTED_DATABASE_ID: ai-studio-apaibaymarketpla-99b738bb-1596-4812-bdf8-877c3a04a892
+        run: |
+          node <<'EOF'
+          const fs = require('fs');
+          const path = require('path');
+
+          const reportPath = path.join(process.env.RUNNER_TEMP, 'seller-pii-audit-report.json');
+          if (!fs.existsSync(reportPath)) {
+            console.error('ERROR: Audit report file was not generated.');
+            process.exit(1);
+          }
+
+          const rawReport = fs.readFileSync(reportPath, 'utf8');
+          const report = JSON.parse(rawReport);
+
+          // Strict mode & target verification (never accept emulator/mock results)
+          if (report.mode !== 'DRY_RUN_ONLY') {
+            console.error(`ERROR: Unexpected audit mode '${report.mode}'. Expected 'DRY_RUN_ONLY'.`);
+            process.exit(1);
+          }
+          if (report.targetEnvironment !== 'live_configured') {
+            console.error(`ERROR: Unexpected targetEnvironment '${report.targetEnvironment}'. Expected 'live_configured'.`);
+            process.exit(1);
+          }
+          if (report.databaseId !== process.env.EXPECTED_DATABASE_ID) {
+            console.error(`ERROR: Database ID mismatch in report ('${report.databaseId}').`);
+            process.exit(1);
+          }
+
+          // Guard against accidental email or non-HMAC ID leakage before publishing
+          if (/[^\s@]+@[^\s@]+\.[^\s@]+/.test(rawReport)) {
+            console.error('ERROR: Potential email pattern detected in audit output. Refusing to publish report.');
+            process.exit(1);
+          }
+
+          const findings = Array.isArray(report.findings) ? report.findings : [];
+          for (const f of findings) {
+            if (typeof f.anonymizedRef !== 'string' || !/^seller_hmac_[a-f0-9]{16}$/.test(f.anonymizedRef)) {
+              console.error('ERROR: Finding does not match required HMAC-SHA256 anonymized format. Refusing to publish report.');
+              process.exit(1);
+            }
+          }
+
+          const detectedFields = Object.entries(report.fieldFrequency || {})
+            .filter(([, count]) => Number(count) > 0)
+            .map(([field, count]) => ({ field, count }));
+
+          const safeSummary = {
+            mode: report.mode,
+            targetEnvironment: report.targetEnvironment,
+            projectId: process.env.EXPECTED_PROJECT_ID,
+            databaseId: report.databaseId,
+            scannedAt: report.scannedAt,
+            totalSellersScanned: report.totalSellersScanned,
+            cleanNoPiiCount: report.cleanNoPiiCount,
+            legacyPiiDocsCount: report.legacyPiiDocsCount,
+            readyForScrubCount: report.readyForScrubCount,
+            missingKycBackfillCount: report.missingKycBackfillCount,
+            detectedFields,
+            findings,
+          };
+
+          console.log(JSON.stringify(safeSummary, null, 2));
+
+          const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+          if (summaryPath) {
+            const lines = [
+              '## Apaibay Production Legacy Seller PII Audit (Read-Only)',
+              '',
+              `- **Mode:** \`${report.mode}\` (\`${report.targetEnvironment}\`)`,
+              `- **Project ID:** \`${process.env.EXPECTED_PROJECT_ID}\``,
+              `- **Firestore Database ID:** \`${report.databaseId}\``,
+              `- **Scanned At:** \`${report.scannedAt}\``,
+              '',
+              '| Metric | Count |',
+              '| --- | ---: |',
+              `| Total Seller documents scanned | ${report.totalSellersScanned} |`,
+              `| CLEAN_NO_PII | ${report.cleanNoPiiCount} |`,
+              `| Legacy PII documents detected | ${report.legacyPiiDocsCount} |`,
+              `| MIGRATED_READY_FOR_SCRUB | ${report.readyForScrubCount} |`,
+              `| NEEDS_KYC_BACKFILL | ${report.missingKycBackfillCount} |`,
+              '',
+              '### Suspected PII Field Names',
+              detectedFields.length > 0
+                ? detectedFields.map((d) => `- \`${d.field}\`: ${d.count} document(s)`).join('\n')
+                : '- None detected.',
+              '',
+              '### Anonymized Seller Findings (HMAC-SHA256)',
+            ];
+
+            if (findings.length === 0) {
+              lines.push('- No legacy PII findings detected.');
+            } else {
+              lines.push('| Anonymized Ref | Classification | Detected Fields | Has KYC | Missing KYC Fields |');
+              lines.push('| --- | --- | --- | --- | --- |');
+              for (const f of findings) {
+                lines.push(
+                  `| \`${f.anonymizedRef}\` | \`${f.classification}\` | ${(f.detectedPiiFields || []).map((x) => `\`${x}\``).join(', ') || 'none'} | ${Boolean(f.hasKycRecord)} | ${(f.missingKycFields || []).map((x) => `\`${x}\``).join(', ') || 'none'} |`
+                );
+              }
+            }
+
+            fs.appendFileSync(summaryPath, lines.join('\n') + '\n', 'utf8');
+          }
+          EOF
+
+      - name: Cleanup temporary audit files
+        if: always()
+        run: rm -f "$RUNNER_TEMP/seller-pii-audit-report.json" "$RUNNER_TEMP/seller-pii-audit-stderr.log"

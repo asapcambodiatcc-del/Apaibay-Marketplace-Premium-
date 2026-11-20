@@ -75,34 +75,72 @@ const WingBankLogo: React.FC<{ className?: string }> = ({ className = 'h-5 w-aut
 );
 
 // ---------------------------------------------------------------------------
-// Official GitChat Android App Brand Icon
+// Official gidChat Android App Brand Icon
 // ---------------------------------------------------------------------------
 
-const GitChatAppIcon: React.FC<{ className?: string }> = ({ className = 'w-11 h-11' }) => (
-  <svg viewBox="0 0 44 44" className={className} fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="GitChat">
-    {/* Green App Icon Background */}
-    <rect width="44" height="44" rx="11" fill="#10B981" />
-    
-    {/* White Chat Bubble */}
+export const GidChatAppIcon: React.FC<{ className?: string }> = ({ className = 'w-11 h-11' }) => (
+  <svg
+    viewBox="0 0 48 48"
+    className={className}
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-label="gidChat"
+  >
+    <defs>
+      {/* Green rounded-square background with smooth green gradient */}
+      <linearGradient id="gidChatBg" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#22C55E" />
+        <stop offset="50%" stopColor="#16A34A" />
+        <stop offset="100%" stopColor="#15803D" />
+      </linearGradient>
+      {/* Soft shadow for depth */}
+      <filter id="gidChatShadow" x="-15%" y="-15%" width="130%" height="130%">
+        <feDropShadow dx="0" dy="1.2" stdDeviation="0.8" floodColor="#0F172A" floodOpacity="0.16" />
+      </filter>
+    </defs>
+
+    {/* Green rounded-square background */}
+    <rect width="48" height="48" rx="12" fill="url(#gidChatBg)" />
+
+    {/* White curved antenna extending upward from the chat bubble */}
     <path
-      d="M10 21.5C10 15.7 14.7 11 20.5 11h3c5.8 0 10.5 4.7 10.5 10.5S29.3 32 23.5 32H18l-5.5 3.5c-.7.4-1.5-.1-1.5-.9V28.5C10.4 26.6 10 24.1 10 21.5z"
+      d="M22 19.5 C22 14.5 24 12 26 9.2"
+      stroke="#FFFFFF"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill="none"
+    />
+
+    {/* Small yellow circular antenna tip */}
+    <circle cx="26.8" cy="8.2" r="3.2" fill="#FACC15" />
+    <circle cx="26" cy="7.4" r="1.1" fill="#FEF08A" />
+
+    {/* Small white four-point sparkle on the upper-right side */}
+    <path
+      d="M37.5 6 C37.5 8.8 35.2 10.5 33 10.5 C35.2 10.5 37.5 12.2 37.5 15 C37.5 12.2 39.8 10.5 42 10.5 C40.2 10.5 37.5 8.8 37.5 6 Z"
       fill="#FFFFFF"
     />
-    
-    {/* Green Connected-Node Symbol (Git Branch Graph) */}
-    <line x1="17.5" y1="17" x2="17.5" y2="26" stroke="#10B981" strokeWidth="2" strokeLinecap="round" />
-    <path d="M17.5 24.5C17.5 21 21 19 24.5 19" stroke="#10B981" strokeWidth="2" strokeLinecap="round" fill="none" />
-    
-    {/* Top node (green) */}
-    <circle cx="17.5" cy="17" r="2.5" fill="#10B981" />
-    {/* Bottom node (green) */}
-    <circle cx="17.5" cy="26" r="2.5" fill="#10B981" />
-    
-    {/* Branch node with Orange Center Dot */}
-    <circle cx="25" cy="19" r="3" fill="#10B981" />
-    <circle cx="25" cy="19" r="1.5" fill="#FF6A00" />
+
+    {/* White robot-style chat bubble centered inside the green square */}
+    <path
+      d="M17 19 h14 c4.418 0 8 3.582 8 8 v2 c0 4.418 -3.582 8 -8 8 h-8.5 l-5.5 4.5 c-.7 .55 -1.5 .05 -1.5 -.8 V37 c-3.314 0 -6 -2.686 -6 -6 v-4 c0 -4.418 3.582 -8 8 -8 z"
+      fill="#FFFFFF"
+      filter="url(#gidChatShadow)"
+    />
+
+    {/* Two small black oval eyes */}
+    <ellipse cx="19.5" cy="27.5" rx="1.6" ry="2.5" fill="#0F172A" />
+    <ellipse cx="28.5" cy="27.5" rx="1.6" ry="2.5" fill="#0F172A" />
+
+    {/* Subtle eye gleam for friendly look */}
+    <circle cx="19" cy="26.6" r="0.6" fill="#FFFFFF" />
+    <circle cx="28" cy="26.6" r="0.6" fill="#FFFFFF" />
   </svg>
 );
+
+// Backward-compatibility alias
+export const GitChatAppIcon = GidChatAppIcon;
 
 // ---------------------------------------------------------------------------
 // Footer Component
@@ -358,15 +396,62 @@ export const Footer: React.FC<FooterProps> = ({
           </div>
         </div>
 
-        {/* Payment Methods & GitChat Section */}
-        <div className="pt-8 border-t border-slate-200 dark:border-slate-800/80 space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
-              {t('footer.paymentMethods', 'Supported Payment Methods')}
-            </span>
-          </div>
+        {/* E. DOWNLOAD APP SECTION */}
+        <div className="pt-8 border-t border-slate-200 dark:border-slate-800/80 space-y-3">
+          <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+            {t('footer.downloadApp', 'Download App')}
+          </span>
 
-          {/* 6 Supported Payment Methods in One Horizontal Row on Desktop */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl">
+            {/* Android Application Card */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3 sm:p-3.5 shadow-xs flex items-center justify-between gap-3 transition-colors hover:border-slate-300 dark:hover:border-slate-700">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#ff6a00] to-[#e65f00] flex items-center justify-center text-white font-black text-sm shrink-0 shadow-xs">
+                  a<span className="text-slate-950 font-black">b</span>
+                </div>
+                <div className="leading-tight min-w-0">
+                  <div className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
+                    Apaibay Marketplace
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate">
+                    Android Application
+                  </div>
+                </div>
+              </div>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 whitespace-nowrap shrink-0">
+                {t('footer.comingSoon', 'Coming Soon')}
+              </span>
+            </div>
+
+            {/* iOS Application Card */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3 sm:p-3.5 shadow-xs flex items-center justify-between gap-3 transition-colors hover:border-slate-300 dark:hover:border-slate-700">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-slate-900 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-white font-black text-sm shrink-0 shadow-xs">
+                  <span className="text-[#ff6a00]">a</span>b
+                </div>
+                <div className="leading-tight min-w-0">
+                  <div className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
+                    Apaibay Marketplace
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate">
+                    iOS Application
+                  </div>
+                </div>
+              </div>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 whitespace-nowrap shrink-0">
+                {t('footer.comingSoon', 'Coming Soon')}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* F. SUPPORTED PAYMENT METHODS SECTION */}
+        <div className="pt-8 border-t border-slate-200 dark:border-slate-800/80 space-y-3">
+          <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+            {t('footer.paymentMethods', 'Supported Payment Methods')}
+          </span>
+
+          {/* 6 Supported Payment Methods in One Uninterrupted Grid: 6 cols on desktop, 2 cols on mobile */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
             {/* 1. ABA PAY */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-2.5 sm:p-3 h-12 flex items-center justify-center shadow-xs transition-shadow hover:border-slate-300 dark:hover:border-slate-700">
@@ -398,26 +483,30 @@ export const Footer: React.FC<FooterProps> = ({
               <WingBankLogo className="h-6 w-auto" />
             </div>
           </div>
+        </div>
 
-          {/* GitChat Android App - Separate Row Directly Below ABA PAY Position */}
-          <div className="pt-2 flex justify-start">
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-3.5 shadow-xs flex items-center justify-between gap-3 w-full max-w-[280px] sm:max-w-[310px] transition-all hover:border-[#10b981]/40">
-              <div className="flex items-center gap-3">
-                <GitChatAppIcon className="w-10 h-10 shrink-0" />
-                <div className="leading-tight">
-                  <div className="font-extrabold text-sm sm:text-base flex items-center tracking-tight">
-                    <span className="text-[#059669] dark:text-[#10b981]">Git</span>
-                    <span className="text-slate-900 dark:text-white">Chat</span>
-                  </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                    {t('footer.gitchatSubtitle', 'Android Application')}
-                  </div>
+        {/* G. GIDCHAT SECTION */}
+        <div className="pt-6 border-t border-slate-200 dark:border-slate-800/80 space-y-3">
+          <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+            {t('footer.gidchatTitle', 'gidChat')}
+          </span>
+
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3 sm:p-3.5 shadow-xs flex items-center justify-between gap-3 w-full max-w-sm transition-all hover:border-[#16a34a]/40">
+            <div className="flex items-center gap-3 min-w-0">
+              <GidChatAppIcon className="w-10 h-10 shrink-0" />
+              <div className="leading-tight min-w-0">
+                <div className="font-extrabold text-sm sm:text-base flex items-center tracking-tight font-sans">
+                  <span className="text-[#16a34a] dark:text-[#22c55e]">gid</span>
+                  <span className="text-black dark:text-white">Chat</span>
+                </div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                  {t('footer.gidchatSubtitle', 'Android Application')}
                 </div>
               </div>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 whitespace-nowrap">
-                {t('footer.comingSoon', 'Coming Soon')}
-              </span>
             </div>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 whitespace-nowrap shrink-0">
+              {t('footer.comingSoon', 'Coming Soon')}
+            </span>
           </div>
         </div>
 

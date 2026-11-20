@@ -16,7 +16,8 @@ export type PaymentMethodType =
   | 'wing'
   | 'card'
   | 'paypal'
-  | 'stripe';
+  | 'stripe'
+  | 'crypto';
 
 export type PaymentProvider =
   | 'sandbox'
@@ -26,7 +27,48 @@ export type PaymentProvider =
   | 'card'
   | 'paypal'
   | 'stripe'
-  | 'manual';
+  | 'manual'
+  | 'nowpayments'
+  | 'crypto_sandbox';
+
+export type CryptoTokenSymbol = 'USDT' | 'USDC' | 'BNB';
+export type CryptoNetworkId = 'bep20' | 'trc20' | 'solana' | 'bsc';
+
+export interface CryptoCurrencyOption {
+  id: string; // e.g. 'usdt_bep20', 'usdt_trc20', 'usdc_solana', 'bnb_bsc'
+  currency: CryptoTokenSymbol;
+  network: string; // e.g. 'BNB Smart Chain', 'TRON Network', 'Solana', 'BNB Smart Chain'
+  tokenStandard: string; // 'BEP-20', 'TRC-20', 'SPL', 'BEP-20'
+  ticker: string; // 'usdtbsc', 'usdttrc20', 'usdcsol', 'bnbbsc'
+  iconColor: string;
+  description: string;
+}
+
+export interface CryptoPaymentDetails {
+  paymentId: string;
+  invoiceId: string;
+  currency: string;
+  network: string;
+  tokenStandard?: string;
+  ticker: string;
+  payAmount: number;
+  fiatAmount: number;
+  fiatCurrency: string;
+  rate: number;
+  payAddress: string;
+  paymentUrl?: string;
+  qrCodeData: string;
+  status: 'waiting' | 'confirming' | 'paid' | 'expired' | 'failed' | 'partially_paid';
+  expiresAt: string;
+  timeRemainingSeconds?: number;
+  txHash?: string;
+  actuallyPaid?: number;
+  confirmedAmount?: number;
+  confirmedAt?: string;
+  errorReason?: string;
+  underpaidAmount?: number;
+  overpaidAmount?: number;
+}
 
 export interface PaymentFailure {
   code: string;

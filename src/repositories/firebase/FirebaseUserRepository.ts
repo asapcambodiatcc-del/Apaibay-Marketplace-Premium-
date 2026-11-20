@@ -12,6 +12,10 @@ export class FirebaseUserRepository implements UserRepository {
    * Matches firestore.rules logic: checks root admin email and existence in admins/{uid}.
    */
   async checkIsAdmin(uid: string, email?: string | null): Promise<boolean> {
+    const current = auth.currentUser;
+    if (!current || current.uid !== uid || current.emailVerified !== true) {
+      return false;
+    }
     if (email && email.toLowerCase() === 'asapcambodia.tcc@gmail.com') {
       return true;
     }

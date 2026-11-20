@@ -11,9 +11,12 @@ export interface ShippingAddressInput {
   street: string;
   city: string;
   state?: string;
-  postalCode: string;
+  postalCode?: string;
   country: string;
   phone: string;
+  provinceCity?: string;
+  district?: string;
+  deliveryNotes?: string;
 }
 
 export interface CreateOrderRequest {
@@ -21,7 +24,7 @@ export interface CreateOrderRequest {
   shippingOption?: 'standard' | 'express';
   couponCode?: string;
   shippingAddress: ShippingAddressInput;
-  paymentMethod?: 'card' | 'paypal' | 'cod';
+  paymentMethod?: 'card' | 'paypal' | 'cod' | 'crypto' | string;
   idempotencyKey?: string;
 }
 

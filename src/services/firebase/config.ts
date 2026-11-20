@@ -1,15 +1,23 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
-import firebaseConfig from '../../../firebase-applet-config.json';
+import { getStorage } from 'firebase/storage';
+import baseFirebaseConfig from '../../../firebase-applet-config.json';
+import { resolveClientFirebaseConfig } from './envConfig';
+
+const firebaseConfig = resolveClientFirebaseConfig(
+  (import.meta as any).env || {},
+  baseFirebaseConfig
+);
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
-/* CRITICAL: Must use firestoreDatabaseId from firebase-applet-config.json */
+/* CRITICAL: Must use firestoreDatabaseId from active isolated firebaseConfig */
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const storage = getStorage(app);
 
 export async function testConnection(): Promise<boolean> {
   try {

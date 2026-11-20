@@ -122,23 +122,19 @@ export class OrderService {
   ): Promise<any> {
     // 1. Idempotency check: Look up existing key to prevent double charge or duplicate decrement
     if (input.idempotencyKey) {
-      try {
-        const idempRef = doc(db, 'idempotency_keys', input.idempotencyKey);
-        const idempSnap = await getDoc(idempRef);
-        if (idempSnap.exists()) {
-          const data = idempSnap.data();
-          const existingOrderRef = doc(db, 'orders', data.orderId);
-          const orderSnap = await getDoc(existingOrderRef);
-          if (orderSnap.exists()) {
-            return {
-              id: orderSnap.id,
-              ...orderSnap.data(),
-              _idempotentReplay: true,
-            };
-          }
+      const idempRef = doc(db, 'idempotency_keys', input.idempotencyKey);
+      const idempSnap = await getDoc(idempRef);
+      if (idempSnap.exists()) {
+        const data = idempSnap.data();
+        const existingOrderRef = doc(db, 'orders', data.orderId);
+        const orderSnap = await getDoc(existingOrderRef);
+        if (orderSnap.exists()) {
+          return {
+            id: orderSnap.id,
+            ...orderSnap.data(),
+            _idempotentReplay: true,
+          };
         }
-      } catch {
-        // Continue if lookup fails
       }
     }
 
@@ -288,11 +284,7 @@ export class OrderService {
     });
 
     // Record server-authoritative commission ledger entries idempotently
-    try {
-      await SellerLedgerService.recordOrderCommissions(createdOrder);
-    } catch (err) {
-      console.warn('[OrderService] Non-blocking ledger recording warning:', err);
-    }
+    await SellerLedgerService.recordOrderCommissions(createdOrder);
 
     return createdOrder;
   }
