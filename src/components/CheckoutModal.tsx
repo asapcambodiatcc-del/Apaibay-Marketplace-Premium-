@@ -313,7 +313,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl max-w-md mx-auto text-left text-xs space-y-2 border border-slate-200 dark:border-slate-700">
               <div className="flex justify-between">
                 <span className="text-slate-500">{t('checkout.trackingNumber', 'Tracking Number:')}</span>
-                <span className="font-mono font-bold text-[#ff6a00]">{placedOrder?.trackingNumber}</span>
+                <span className="font-mono font-bold text-[#ff6a00]">
+                  {placedOrder?.trackingNumber || 'Awaiting seller dispatch'}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">{t('checkout.carrier', 'Carrier:')}</span>

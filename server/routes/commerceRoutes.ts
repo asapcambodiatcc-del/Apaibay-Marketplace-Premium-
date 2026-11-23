@@ -11,8 +11,18 @@ import { DisputeService } from '../commerce/disputeService';
 import { KycService, sanitizePublicSellerOwnerName } from '../commerce/kycService';
 import { AdminActivityLogService } from '../admin/adminActivityLogService';
 import { hasPermission } from '../auth/roles';
+import { validateCreateProductInput, validateUpdateProductInput } from '../validation/productValidation';
+import {
+  assertVerifiedActiveSeller as sharedAssertVerifiedActiveSeller,
+  applyOrderStatusTransition,
+  recordSellerTrackingUpdate,
+  sanitizeOrderForViewer,
+} from '../commerce/orderTrackingService';
+import { NotificationService } from '../commerce/notificationService';
 
 const router = Router();
+
+const assertVerifiedActiveSeller = sharedAssertVerifiedActiveSeller;
 
 /**
  * POST /api/commerce/checkout/quote
@@ -112,10 +122,11 @@ router.get('/orders', verifyFirebaseUser, async (req: Request, res: Response) =>
       orders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     }
 
-    // Sort descending by date
+    // Sort descending by date and sanitize for caller's role
     orders.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    const sanitizedOrders = orders.map((ord) => sanitizeOrderForViewer(ord, user));
 
-    res.json({ success: true, orders });
+    res.json({ success: true, orders: sanitizedOrders });
   } catch {
     res.status(500).json({
       success: false,
@@ -159,11 +170,39 @@ router.get('/orders/:orderId', verifyFirebaseUser, async (req: Request, res: Res
       return;
     }
 
-    res.json({ success: true, order });
+    res.json({ success: true, order: sanitizeOrderForViewer(order, user) });
   } catch {
     res.status(500).json({
       success: false,
       error: { code: 'FETCH_ORDER_FAILED', message: 'Failed to retrieve order details.' },
+    });
+  }
+});
+
+/**
+ * PATCH /api/commerce/orders/:orderId/tracking
+ * Verified active seller records or updates carrier & tracking information for their own order items.
+ */
+router.patch('/orders/:orderId/tracking', verifyFirebaseUser, async (req: Request, res: Response) => {
+  try {
+    const result = await recordSellerTrackingUpdate(req.params.orderId, req.body, req.user!);
+    if (!result.ok) {
+      res.status(result.status).json({
+        success: false,
+        error: {
+          code: result.code || 'TRACKING_UPDATE_FAILED',
+          message: result.message || 'Failed to update shipping tracking.',
+          ...(result.details ? { details: result.details } : {}),
+        },
+      });
+      return;
+    }
+
+    res.json({ success: true, order: result.order });
+  } catch {
+    res.status(500).json({
+      success: false,
+      error: { code: 'TRACKING_UPDATE_FAILED', message: 'Failed to update shipping tracking details.' },
     });
   }
 });
@@ -174,87 +213,22 @@ router.get('/orders/:orderId', verifyFirebaseUser, async (req: Request, res: Res
  */
 router.patch('/orders/:orderId/status', verifyFirebaseUser, async (req: Request, res: Response) => {
   try {
-    const { orderId } = req.params;
-    const { status: targetStatus } = req.body;
-    const user = req.user!;
-
-    const ALLOWED_RAW_STATUSES = [
-      'Placed',
-      'Order Placed',
-      'Processing',
-      'Shipped',
-      'Out for Delivery',
-      'Delivered',
-      'Cancelled',
-      'Canceled',
-    ];
-
-    if (!targetStatus || typeof targetStatus !== 'string' || !ALLOWED_RAW_STATUSES.includes(targetStatus.trim())) {
-      res.status(400).json({
-        success: false,
-        error: { code: 'INVALID_STATUS', message: 'A valid target status string is required.' },
-      });
-      return;
-    }
-
-    const orderDocRef = doc(db, 'orders', orderId);
-    const snap = await getDoc(orderDocRef);
-
-    if (!snap.exists()) {
-      res.status(404).json({
-        success: false,
-        error: { code: 'ORDER_NOT_FOUND', message: `Order #${orderId} not found.` },
-      });
-      return;
-    }
-
-    const order = snap.data() as any;
-    const validation = validateStatusTransition(order.status || 'Placed', targetStatus, order, user);
-
-    if (!validation.allowed) {
-      const statusCode = validation.code?.startsWith('FORBIDDEN') ? 403 : 400;
-      res.status(statusCode).json({
+    const result = await applyOrderStatusTransition(req.params.orderId, req.body, req.user!);
+    if (!result.ok) {
+      res.status(result.status).json({
         success: false,
         error: {
-          code: validation.code || 'INVALID_TRANSITION',
-          message: validation.message || 'Status transition rejected.',
+          code: result.code || 'STATUS_UPDATE_FAILED',
+          message: result.message || 'Status transition rejected.',
+          ...(result.details ? { details: result.details } : {}),
         },
       });
       return;
     }
 
-    const canonicalNewStatus = normalizeStatus(targetStatus);
-    const updatedAt = new Date().toISOString();
-
-    await updateDoc(orderDocRef, {
-      status: canonicalNewStatus,
-      orderStatus: canonicalNewStatus,
-      updatedAt,
-    });
-
-    if (canonicalNewStatus === 'Cancelled') {
-      try {
-        await SellerLedgerService.recordOrderAdjustment(orderId, 'cancellation_adjustment');
-      } catch (adjErr: any) {
-        console.warn('[CommerceRoutes] Non-blocking cancellation adjustment warning:', adjErr?.message || 'Unknown error');
-      }
-    } else if (canonicalNewStatus === 'Delivered') {
-      try {
-        await SellerLedgerService.confirmDeliverySettlement(orderId);
-      } catch (delivErr: any) {
-        console.warn('[CommerceRoutes] Non-blocking delivery settlement warning:', delivErr?.message || 'Unknown error');
-      }
-    }
-
     res.json({
       success: true,
-      order: {
-        ...order,
-        id: snap.id,
-        status: canonicalNewStatus,
-        orderStatus: canonicalNewStatus,
-        updatedAt,
-      },
+      order: result.order,
     });
   } catch {
     res.status(500).json({
@@ -304,6 +278,14 @@ router.patch('/products/:productId/inventory', verifyFirebaseUser, async (req: R
       return;
     }
 
+    if (user.accountStatus === 'suspended') {
+      res.status(403).json({
+        success: false,
+        error: { code: 'ACCOUNT_SUSPENDED', message: 'Suspended accounts cannot modify product inventory.' },
+      });
+      return;
+    }
+
     const prodDocRef = doc(db, 'products', productId);
     const snap = await getDoc(prodDocRef);
 
@@ -317,7 +299,7 @@ router.patch('/products/:productId/inventory', verifyFirebaseUser, async (req: R
 
     const product = snap.data() as any;
 
-    // Verify seller ownership server-side!
+    // Verify seller ownership & active verification status server-side
     const isOwner = user.isSeller && (product.sellerId === user.sellerId || product.sellerId === user.uid);
     if (!user.isAdmin && !isOwner) {
       res.status(403).json({
@@ -325,6 +307,28 @@ router.patch('/products/:productId/inventory', verifyFirebaseUser, async (req: R
         error: {
           code: 'FORBIDDEN_SELLER_OWNERSHIP',
           message: 'You are not authorized to modify another seller’s inventory.',
+        },
+      });
+      return;
+    }
+
+    if (!user.isAdmin) {
+      const sellerErr = await assertVerifiedActiveSeller(user.sellerId || user.uid);
+      if (sellerErr) {
+        res.status(sellerErr.status).json({
+          success: false,
+          error: { code: sellerErr.code, message: sellerErr.message },
+        });
+        return;
+      }
+    }
+
+    if (product.status === 'archived') {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'PRODUCT_ARCHIVED',
+          message: 'Archived listings cannot be restocked until restored to draft or active status.',
         },
       });
       return;
@@ -851,21 +855,59 @@ router.patch('/admin/notifications/:id/read', verifyFirebaseUser, async (req: Re
 });
 
 /**
+ * GET /api/commerce/notifications
+ * Lists authenticated user's private in-app order/tracking notifications.
+ */
+router.get('/notifications', verifyFirebaseUser, async (req: Request, res: Response) => {
+  try {
+    const notifications = await NotificationService.listUserNotifications(req.user!.uid);
+    res.json({ success: true, notifications });
+  } catch {
+    res.status(500).json({
+      success: false,
+      error: { code: 'FETCH_NOTIFICATIONS_FAILED', message: 'Failed to retrieve notifications.' },
+    });
+  }
+});
+
+/**
+ * PATCH /api/commerce/notifications/:notificationId/read
+ * Marks an authenticated user's own notification as read.
+ */
+router.patch('/notifications/:notificationId/read', verifyFirebaseUser, async (req: Request, res: Response) => {
+  try {
+    const result = await NotificationService.markAsRead(req.user!.uid, req.params.notificationId);
+    if (!result.ok) {
+      res.status(result.status).json({
+        success: false,
+        error: { code: result.code || 'UPDATE_NOTIFICATION_FAILED', message: result.message || 'Unauthorized.' },
+      });
+      return;
+    }
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({
+      success: false,
+      error: { code: 'UPDATE_NOTIFICATION_FAILED', message: 'Failed to mark notification as read.' },
+    });
+  }
+});
+
+/**
  * POST /api/commerce/products
  * Authenticated verified seller or admin publishes a product.
  * Requirements:
- * - Uses authenticated seller identity.
- * - Pending, rejected, or suspended sellers CANNOT publish new products.
+ * - Uses authenticated seller identity (never trusts client-supplied sellerId).
+ * - Pending, rejected, expired, or suspended sellers CANNOT publish new products.
  */
 router.post('/products', verifyFirebaseUser, async (req: Request, res: Response) => {
   try {
     const user = req.user!;
-    const { name, price, originalPrice, category, brand, image, description, stock } = req.body;
 
-    if (!name || typeof name !== 'string' || !price || isNaN(Number(price))) {
-      res.status(400).json({
+    if (user.accountStatus === 'suspended') {
+      res.status(403).json({
         success: false,
-        error: { code: 'INVALID_PRODUCT_DATA', message: 'Product name and valid numeric price are required.' },
+        error: { code: 'ACCOUNT_SUSPENDED', message: 'Suspended accounts cannot publish products.' },
       });
       return;
     }
@@ -912,28 +954,46 @@ router.post('/products', verifyFirebaseUser, async (req: Request, res: Response)
       sellerRating = sellerData.rating || 5.0;
     }
 
-    const priceNum = parseFloat(Number(price).toFixed(2));
-    const origPriceNum = originalPrice ? parseFloat(Number(originalPrice).toFixed(2)) : parseFloat((priceNum * 1.2).toFixed(2));
+    const validation = validateCreateProductInput(req.body);
+    if (!validation.valid || !validation.data) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_PRODUCT_DATA',
+          message: validation.errors.join(' '),
+        },
+      });
+      return;
+    }
+
+    const v = validation.data;
     const prodId = `prod_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const now = new Date().toISOString();
+    const baseSlug = v.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const uniqueSlug = `${baseSlug || 'product'}-${prodId.slice(-5)}`;
 
-    const productPayload = {
+    const productPayload: Record<string, any> = {
       id: prodId,
-      name: name.trim(),
-      slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
-      description: description || 'Verified merchant marketplace listing.',
-      price: priceNum,
-      originalPrice: origPriceNum,
-      discountPercentage: Math.max(0, Math.round(((origPriceNum - priceNum) / origPriceNum) * 100)),
+      name: v.name,
+      slug: uniqueSlug,
+      description: v.description,
+      price: v.price,
+      originalPrice: v.originalPrice,
+      discountPercentage:
+        v.originalPrice > 0
+          ? Math.max(0, Math.round(((v.originalPrice - v.price) / v.originalPrice) * 100))
+          : 0,
       rating: 5.0,
       reviewCount: 0,
-      image: image || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800',
-      category: category || 'electronics',
-      brand: brand || 'Marketplace Merchant',
-      inStock: (stock ?? 25) > 0,
-      stock: stock ?? 25,
-      stockCount: stock ?? 25,
-      sku: `SKU-${Date.now().toString().slice(-6)}`,
+      image: v.image,
+      gallery: v.gallery,
+      category: v.category,
+      brand: v.brand,
+      inStock: v.status === 'active' && v.stock > 0,
+      stock: v.stock,
+      stockCount: v.stock,
+      sku: v.sku || `SKU-${Date.now().toString().slice(-6)}`,
+      features: v.features,
       sellerId: user.uid,
       seller: {
         id: user.uid,
@@ -942,11 +1002,15 @@ router.post('/products', verifyFirebaseUser, async (req: Request, res: Response)
         rating: sellerRating,
         badge: 'Verified Merchant',
       },
-      tags: [category || 'electronics', 'new'],
-      status: 'active',
+      tags: v.tags,
+      status: v.status,
       createdAt: now,
       updatedAt: now,
     };
+
+    if (v.secondaryImage) {
+      productPayload.secondaryImage = v.secondaryImage;
+    }
 
     const prodRef = doc(db, 'products', prodId);
     await setDoc(prodRef, productPayload);
@@ -959,6 +1023,191 @@ router.post('/products', verifyFirebaseUser, async (req: Request, res: Response)
     res.status(500).json({
       success: false,
       error: { code: 'PRODUCT_CREATION_FAILED', message: 'Failed to create product listing.' },
+    });
+  }
+});
+
+/**
+ * PATCH /api/commerce/products/:productId
+ * Authenticated verified seller (owner) or admin updates editable product listing fields.
+ * Preserves immutable product id, slug, sellerId, rating, reviewCount, and order references.
+ */
+router.patch('/products/:productId', verifyFirebaseUser, async (req: Request, res: Response) => {
+  try {
+    const { productId } = req.params;
+    const user = req.user!;
+
+    if (user.accountStatus === 'suspended') {
+      res.status(403).json({
+        success: false,
+        error: { code: 'ACCOUNT_SUSPENDED', message: 'Suspended accounts cannot modify product listings.' },
+      });
+      return;
+    }
+
+    const prodDocRef = doc(db, 'products', productId);
+    const snap = await getDoc(prodDocRef);
+
+    if (!snap.exists()) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'PRODUCT_NOT_FOUND', message: `Product #${productId} not found.` },
+      });
+      return;
+    }
+
+    const product = snap.data() as any;
+
+    const isOwner = user.isSeller && (product.sellerId === user.sellerId || product.sellerId === user.uid);
+    if (!user.isAdmin && !isOwner) {
+      res.status(403).json({
+        success: false,
+        error: {
+          code: 'FORBIDDEN_SELLER_OWNERSHIP',
+          message: 'You are not authorized to edit another seller’s product listing.',
+        },
+      });
+      return;
+    }
+
+    if (!user.isAdmin) {
+      const sellerErr = await assertVerifiedActiveSeller(user.sellerId || user.uid);
+      if (sellerErr) {
+        res.status(sellerErr.status).json({
+          success: false,
+          error: { code: sellerErr.code, message: sellerErr.message },
+        });
+        return;
+      }
+    }
+
+    const validation = validateUpdateProductInput(req.body, product);
+    if (!validation.valid || !validation.updates) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_PRODUCT_DATA',
+          message: validation.errors.join(' '),
+        },
+      });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const updatePayload: Record<string, any> = {
+      ...validation.updates,
+      updatedAt: now,
+    };
+
+    if (product.status === 'archived' && (updatePayload.status === 'active' || updatePayload.status === 'draft')) {
+      updatePayload.archivedAt = null;
+      updatePayload.archivedBy = null;
+    }
+
+    await updateDoc(prodDocRef, updatePayload);
+
+    res.json({
+      success: true,
+      product: {
+        ...product,
+        ...updatePayload,
+        id: snap.id,
+      },
+    });
+  } catch {
+    res.status(500).json({
+      success: false,
+      error: { code: 'PRODUCT_UPDATE_FAILED', message: 'Failed to update product listing.' },
+    });
+  }
+});
+
+/**
+ * POST /api/commerce/products/:productId/archive
+ * Soft-archives a product listing so it cannot appear as active/purchasable on the storefront,
+ * while strictly preserving the product document, ID, SKU, and all historical order/ledger references.
+ */
+router.post('/products/:productId/archive', verifyFirebaseUser, async (req: Request, res: Response) => {
+  try {
+    const { productId } = req.params;
+    const user = req.user!;
+
+    if (user.accountStatus === 'suspended') {
+      res.status(403).json({
+        success: false,
+        error: { code: 'ACCOUNT_SUSPENDED', message: 'Suspended accounts cannot archive product listings.' },
+      });
+      return;
+    }
+
+    const prodDocRef = doc(db, 'products', productId);
+    const snap = await getDoc(prodDocRef);
+
+    if (!snap.exists()) {
+      res.status(404).json({
+        success: false,
+        error: { code: 'PRODUCT_NOT_FOUND', message: `Product #${productId} not found.` },
+      });
+      return;
+    }
+
+    const product = snap.data() as any;
+
+    const isOwner = user.isSeller && (product.sellerId === user.sellerId || product.sellerId === user.uid);
+    if (!user.isAdmin && !isOwner) {
+      res.status(403).json({
+        success: false,
+        error: {
+          code: 'FORBIDDEN_SELLER_OWNERSHIP',
+          message: 'You are not authorized to archive another seller’s product listing.',
+        },
+      });
+      return;
+    }
+
+    if (!user.isAdmin) {
+      const sellerErr = await assertVerifiedActiveSeller(user.sellerId || user.uid);
+      if (sellerErr) {
+        res.status(sellerErr.status).json({
+          success: false,
+          error: { code: sellerErr.code, message: sellerErr.message },
+        });
+        return;
+      }
+    }
+
+    if (product.status === 'archived') {
+      res.json({
+        success: true,
+        alreadyArchived: true,
+        product: { ...product, id: snap.id },
+      });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const archiveUpdates = {
+      status: 'archived',
+      inStock: false,
+      archivedAt: now,
+      archivedBy: user.uid,
+      updatedAt: now,
+    };
+
+    await updateDoc(prodDocRef, archiveUpdates);
+
+    res.json({
+      success: true,
+      product: {
+        ...product,
+        ...archiveUpdates,
+        id: snap.id,
+      },
+    });
+  } catch {
+    res.status(500).json({
+      success: false,
+      error: { code: 'PRODUCT_ARCHIVE_FAILED', message: 'Failed to archive product listing.' },
     });
   }
 });

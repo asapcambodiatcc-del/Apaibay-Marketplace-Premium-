@@ -21,14 +21,36 @@ export class FirebaseNotificationRepository implements NotificationRepository {
       const colRef = collection(db, NOTIFICATIONS_COLLECTION);
       const q = query(colRef, where('userId', '==', uid));
       const snap = await getDocs(q);
-      return snap.docs.map((d) => ({
+      const items = snap.docs.map((d) => ({
         id: d.id,
         ...(d.data() as Omit<NotificationItem, 'id'>),
       }));
+      if (items.length > 0) {
+        return items.sort(
+          (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+        );
+      }
     } catch (error) {
-      console.warn('Notifications query:', error);
-      return [];
+      console.warn('Notifications query fallback:', error);
     }
+
+    const current = auth.currentUser;
+    if (current) {
+      try {
+        const token = await current.getIdToken();
+        const res = await fetch('/api/commerce/notifications', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const body = await res.json();
+        if (res.ok && body.success && Array.isArray(body.notifications)) {
+          return body.notifications as NotificationItem[];
+        }
+      } catch {
+        // Non-blocking fallback
+      }
+    }
+
+    return [];
   }
 
   listenUserNotifications(uid: string, callback: (notifications: NotificationItem[]) => void): () => void {
@@ -41,19 +63,35 @@ export class FirebaseNotificationRepository implements NotificationRepository {
     return onSnapshot(
       q,
       (snap) => {
-        const notifications = snap.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as Omit<NotificationItem, 'id'>),
-        }));
+        const notifications = snap.docs
+          .map((d) => ({
+            id: d.id,
+            ...(d.data() as Omit<NotificationItem, 'id'>),
+          }))
+          .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
         callback(notifications);
       },
       (error) => {
-        handleFirestoreError(error, OperationType.LIST, NOTIFICATIONS_COLLECTION);
+        console.warn('Notifications listener fallback:', error);
       }
     );
   }
 
   async markAsRead(notificationId: string): Promise<void> {
+    const current = auth.currentUser;
+    if (current) {
+      try {
+        const token = await current.getIdToken();
+        const res = await fetch(`/api/commerce/notifications/${encodeURIComponent(notificationId)}/read`, {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) return;
+      } catch {
+        // Fallback to direct Firestore rule-enforced update
+      }
+    }
+
     try {
       const docRef = doc(db, NOTIFICATIONS_COLLECTION, notificationId);
       await setDoc(docRef, { read: true }, { merge: true });

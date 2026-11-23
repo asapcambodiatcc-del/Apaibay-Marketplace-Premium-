@@ -22,37 +22,70 @@ export class FirebaseOrderRepository implements OrderRepository {
     const current = auth.currentUser;
     try {
       const colRef = collection(db, ORDERS_COLLECTION);
-      let q;
-      if (current) {
-        q = query(colRef, where('customerUid', '==', current.uid));
-      } else {
-        q = query(colRef);
-      }
+      const q = current ? query(colRef, where('customerUid', '==', current.uid)) : query(colRef);
       const snap = await getDocs(q);
       const orders = snap.docs.map((d) => ({
         id: d.id,
         ...(d.data() as Omit<Order, 'id'>),
       }));
 
-      // Sort by creation date descending
-      return orders.sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+      if (orders.length > 0) {
+        return orders.sort(
+          (a, b) => new Date(b.createdAt || b.date || 0).getTime() - new Date(a.createdAt || a.date || 0).getTime()
+        );
+      }
     } catch (error) {
       console.warn('Orders query fallback:', error);
-      return [];
     }
+
+    if (current) {
+      try {
+        const token = await current.getIdToken();
+        const res = await fetch('/api/commerce/orders', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const body = await res.json();
+        if (res.ok && body.success && Array.isArray(body.orders)) {
+          return body.orders as Order[];
+        }
+      } catch {
+        // Non-blocking fallback
+      }
+    }
+
+    return [];
   }
 
   async getById(id: string): Promise<Order | null> {
+    const current = auth.currentUser;
     try {
       const docRef = doc(db, ORDERS_COLLECTION, id);
       const snap = await getDoc(docRef);
       if (snap.exists()) {
         return { id: snap.id, ...(snap.data() as Omit<Order, 'id'>) };
       }
-      return null;
     } catch (error) {
-      handleFirestoreError(error, OperationType.GET, `${ORDERS_COLLECTION}/${id}`);
+      if (!current) {
+        handleFirestoreError(error, OperationType.GET, `${ORDERS_COLLECTION}/${id}`);
+      }
     }
+
+    if (current) {
+      try {
+        const token = await current.getIdToken();
+        const res = await fetch(`/api/commerce/orders/${encodeURIComponent(id)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const body = await res.json();
+        if (res.ok && body.success && body.order) {
+          return body.order as Order;
+        }
+      } catch {
+        // Ignore and return null
+      }
+    }
+
+    return null;
   }
 
   async create(orderData: Omit<Order, 'id'>): Promise<Order> {

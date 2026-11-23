@@ -17,8 +17,8 @@ const CATEGORIES_COLLECTION = 'categories';
 export class FirebaseProductRepository implements ProductRepository {
   private memoryCache: Product[] = [];
 
-  private async ensureInitialized(): Promise<Product[]> {
-    if (this.memoryCache.length > 0) {
+  private async ensureInitialized(forceRefresh: boolean = false): Promise<Product[]> {
+    if (!forceRefresh && this.memoryCache.length > 0) {
       return this.memoryCache;
     }
 
@@ -46,8 +46,8 @@ export class FirebaseProductRepository implements ProductRepository {
     }
   }
 
-  async getAll(): Promise<Product[]> {
-    return this.ensureInitialized();
+  async getAll(forceRefresh: boolean = false): Promise<Product[]> {
+    return this.ensureInitialized(forceRefresh);
   }
 
   async getById(id: string): Promise<Product | null> {
@@ -70,7 +70,9 @@ export class FirebaseProductRepository implements ProductRepository {
   }
 
   async getByCategory(categorySlug: string): Promise<Product[]> {
-    const all = await this.getAll();
+    const all = (await this.getAll()).filter(
+      (p) => p.status !== 'archived' && p.status !== 'draft'
+    );
     if (!categorySlug || categorySlug === 'all') {
       return all;
     }
@@ -78,7 +80,9 @@ export class FirebaseProductRepository implements ProductRepository {
   }
 
   async search(searchQuery: string, filters?: ProductFilters): Promise<Product[]> {
-    let results = await this.getAll();
+    let results = (await this.getAll()).filter(
+      (p) => p.status !== 'archived' && p.status !== 'draft'
+    );
 
     if (searchQuery && searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();

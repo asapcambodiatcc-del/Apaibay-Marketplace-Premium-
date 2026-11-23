@@ -10,7 +10,27 @@ import {
   KycHistoryEvent,
   KycDocumentRecord,
   IdentityDocumentType,
+  Order,
+  OrderDispute,
+  Product,
 } from '../types';
+
+export interface SellerProductPayload {
+  name: string;
+  price: number;
+  originalPrice?: number;
+  category: string;
+  brand?: string;
+  image?: string;
+  secondaryImage?: string;
+  gallery?: string[];
+  description?: string;
+  stock?: number;
+  sku?: string;
+  features?: string[];
+  tags?: string[];
+  status?: 'active' | 'draft';
+}
 
 export class SellerClient {
   private static async getAuthHeaders(): Promise<Record<string, string>> {
@@ -191,18 +211,9 @@ export class SellerClient {
   }
 
   /**
-   * Publishes a product listing on behalf of verified seller.
+   * Publishes or saves a draft product listing on behalf of verified seller.
    */
-  static async publishProduct(productData: {
-    name: string;
-    price: number;
-    originalPrice?: number;
-    category: string;
-    brand?: string;
-    image?: string;
-    description?: string;
-    stock?: number;
-  }): Promise<any> {
+  static async publishProduct(productData: SellerProductPayload): Promise<Product> {
     const headers = await this.getAuthHeaders();
     const res = await fetch('/api/commerce/products', {
       method: 'POST',
@@ -211,10 +222,157 @@ export class SellerClient {
     });
 
     const body = await res.json();
-    if (!res.ok || !body.success) {
+    if (!res.ok || !body.success || !body.product) {
       throw new Error(body?.error?.message || 'Failed to publish product listing.');
     }
-    return body.product;
+    return body.product as Product;
+  }
+
+  /**
+   * Updates editable details for an owned product listing (preserves id, slug, sellerId, and order history).
+   */
+  static async updateProduct(
+    productId: string,
+    updates: Partial<SellerProductPayload>
+  ): Promise<Product> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(`/api/commerce/products/${encodeURIComponent(productId)}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(updates),
+    });
+
+    const body = await res.json();
+    if (!res.ok || !body.success || !body.product) {
+      throw new Error(body?.error?.message || 'Failed to update product listing.');
+    }
+    return body.product as Product;
+  }
+
+  /**
+   * Soft-archives an owned product listing without deleting its record or historical orders.
+   */
+  static async archiveProduct(productId: string): Promise<Product> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(`/api/commerce/products/${encodeURIComponent(productId)}/archive`, {
+      method: 'POST',
+      headers,
+    });
+
+    const body = await res.json();
+    if (!res.ok || !body.success || !body.product) {
+      throw new Error(body?.error?.message || 'Failed to archive product listing.');
+    }
+    return body.product as Product;
+  }
+
+  /**
+   * Updates stock count for an owned product listing.
+   */
+  static async updateProductInventory(
+    productId: string,
+    stock: number
+  ): Promise<{ productId: string; stock: number; inStock: boolean }> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(`/api/commerce/products/${encodeURIComponent(productId)}/inventory`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ stock }),
+    });
+
+    const body = await res.json();
+    if (!res.ok || !body.success) {
+      throw new Error(body?.error?.message || 'Failed to update product inventory.');
+    }
+    return {
+      productId: body.productId,
+      stock: body.stock,
+      inStock: body.inStock,
+    };
+  }
+
+  /**
+   * Retrieves orders containing products owned by the authenticated seller.
+   */
+  static async getMySellerOrders(): Promise<Order[]> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch('/api/commerce/orders', { headers });
+    const body = await res.json();
+    if (!res.ok || !body.success) {
+      throw new Error(body?.error?.message || 'Failed to retrieve store orders.');
+    }
+    return body.orders || [];
+  }
+
+  /**
+   * Updates fulfillment status for an owned order (Processing, Shipped, or Cancelled),
+   * optionally recording shipping carrier & tracking details alongside the status change.
+   */
+  static async updateSellerOrderStatus(
+    orderId: string,
+    status: 'Processing' | 'Shipped' | 'Cancelled',
+    trackingPayload?: {
+      carrier: string;
+      trackingNumber: string;
+      trackingUrl?: string;
+      shippedAt?: string;
+      notes?: string;
+    }
+  ): Promise<Order> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(`/api/commerce/orders/${encodeURIComponent(orderId)}/status`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({
+        status,
+        ...(trackingPayload || {}),
+      }),
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success || !body.order) {
+      throw new Error(body?.error?.message || 'Failed to update order fulfillment status.');
+    }
+    return body.order as Order;
+  }
+
+  /**
+   * Records or updates carrier shipping & tracking details for the authenticated seller's items in an order.
+   */
+  static async updateOrderTracking(
+    orderId: string,
+    payload: {
+      carrier: string;
+      trackingNumber: string;
+      trackingUrl?: string;
+      shippedAt?: string;
+      notes?: string;
+      markAsShipped?: boolean;
+    }
+  ): Promise<Order> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(`/api/commerce/orders/${encodeURIComponent(orderId)}/tracking`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    const body = await res.json();
+    if (!res.ok || !body.success || !body.order) {
+      throw new Error(body?.error?.message || 'Failed to update shipping tracking.');
+    }
+    return body.order as Order;
+  }
+
+  /**
+   * Lists customer disputes scoped to the authenticated seller's orders.
+   */
+  static async getMyDisputes(): Promise<OrderDispute[]> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch('/api/commerce/disputes', { headers });
+    const body = await res.json();
+    if (!res.ok || !body.success) {
+      throw new Error(body?.error?.message || 'Failed to retrieve order disputes.');
+    }
+    return body.disputes || [];
   }
 
   /**

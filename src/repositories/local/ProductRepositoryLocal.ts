@@ -31,7 +31,7 @@ export class ProductRepositoryLocal implements ProductRepository {
     }
   }
 
-  async getAll(): Promise<Product[]> {
+  async getAll(_forceRefresh?: boolean): Promise<Product[]> {
     return [...this.products];
   }
 
@@ -46,16 +46,17 @@ export class ProductRepositoryLocal implements ProductRepository {
   }
 
   async getByCategory(categorySlug: string): Promise<Product[]> {
+    const activeOnly = this.products.filter((p) => p.status !== 'archived' && p.status !== 'draft');
     if (!categorySlug || categorySlug === 'all') {
-      return [...this.products];
+      return activeOnly;
     }
-    return this.products.filter(
+    return activeOnly.filter(
       (p) => p.category.toLowerCase() === categorySlug.toLowerCase()
     );
   }
 
   async search(query: string, filters?: ProductFilters): Promise<Product[]> {
-    let results = [...this.products];
+    let results = this.products.filter((p) => p.status !== 'archived' && p.status !== 'draft');
 
     if (query && query.trim()) {
       const q = query.toLowerCase().trim();

@@ -50,6 +50,8 @@ export interface Product {
   colors?: { name: string; hex: string }[];
   sizes?: string[];
   status?: 'active' | 'draft' | 'archived';
+  archivedAt?: string;
+  archivedBy?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -127,6 +129,36 @@ export interface BrandItem {
   isTopTier?: boolean;
 }
 
+export type TrackingHistorySource = 'seller_manual' | 'platform';
+
+export interface OrderTrackingEvent {
+  id: string;
+  sellerId?: string;
+  sellerStoreName?: string;
+  status: 'Placed' | 'Processing' | 'Shipped' | 'Out for Delivery' | 'Delivered' | 'Cancelled';
+  carrier?: string;
+  trackingNumber?: string;
+  trackingUrl?: string;
+  shippedAt?: string;
+  notes?: string;
+  source: TrackingHistorySource;
+  updatedByUid?: string;
+  createdAt: string;
+}
+
+export interface SellerShipmentInfo {
+  sellerId: string;
+  sellerStoreName?: string;
+  carrier: string;
+  trackingNumber: string;
+  trackingUrl?: string;
+  shippedAt: string;
+  status: 'Processing' | 'Shipped' | 'Delivered' | 'Cancelled';
+  notes?: string;
+  source: TrackingHistorySource;
+  updatedAt: string;
+}
+
 export interface Order {
   id: string;
   customerUid?: string;
@@ -141,10 +173,15 @@ export interface Order {
   discount: number;
   currency?: string;
   paymentStatus?: 'pending' | 'paid' | 'failed' | 'refunded' | 'expired' | 'partially_paid';
-  orderStatus?: 'Order Placed' | 'Processing' | 'Shipped' | 'Out for Delivery' | 'Delivered' | 'Cancelled';
-  status: 'Order Placed' | 'Processing' | 'Shipped' | 'Out for Delivery' | 'Delivered' | 'Cancelled';
+  orderStatus?: 'Placed' | 'Order Placed' | 'Processing' | 'Shipped' | 'Out for Delivery' | 'Delivered' | 'Cancelled';
+  status: 'Placed' | 'Order Placed' | 'Processing' | 'Shipped' | 'Out for Delivery' | 'Delivered' | 'Cancelled';
   trackingNumber: string;
   carrier: string;
+  trackingUrl?: string;
+  shippedAt?: string;
+  trackingSource?: TrackingHistorySource;
+  sellerShipments?: Record<string, SellerShipmentInfo>;
+  trackingHistory?: OrderTrackingEvent[];
   estimatedDelivery: string;
   paymentMethod?: string;
   cryptoCurrency?: string;
@@ -373,6 +410,9 @@ export interface NotificationItem {
   read: boolean;
   createdAt: string;
   link?: string;
+  orderId?: string;
+  sellerId?: string;
+  eventType?: string;
 }
 
 export interface AdminNotification {

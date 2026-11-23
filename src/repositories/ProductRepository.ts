@@ -11,7 +11,7 @@ export interface ProductFilters {
 }
 
 export interface ProductRepository {
-  getAll(): Promise<Product[]>;
+  getAll(forceRefresh?: boolean): Promise<Product[]>;
   getById(id: string): Promise<Product | null>;
   getBySlug(slug: string): Promise<Product | null>;
   getByCategory(categorySlug: string): Promise<Product[]>;

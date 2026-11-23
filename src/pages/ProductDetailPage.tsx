@@ -23,6 +23,7 @@ import {
   Award,
   Store,
   MessageSquare,
+  AlertTriangle,
 } from 'lucide-react';
 import { Product } from '../types';
 
@@ -82,6 +83,10 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ onShowToas
   }
 
   const isOutOfStock = product.stock !== undefined && product.stock <= 0;
+  const isArchivedListing = product.status === 'archived';
+  const isDraftListing = product.status === 'draft';
+  const isUnavailableListing = isArchivedListing || isDraftListing;
+  const isPurchaseDisabled = isOutOfStock || isUnavailableListing;
   const maxStock = product.stock !== undefined && product.stock > 0 ? product.stock : 999;
   const inWishlist = isInWishlist(product.id);
 
@@ -97,7 +102,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ onShowToas
   const displayImage = activeImage || product.image || galleryImages[0] || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80';
 
   const handleAddToCart = () => {
-    if (!product || isOutOfStock || isSubmitting) return;
+    if (!product || isPurchaseDisabled || isSubmitting) return;
     setIsSubmitting(true);
     const validQty = Math.max(1, Math.min(quantity, maxStock));
     addToCart(product, validQty, selectedColor || undefined, selectedSize || undefined);
@@ -110,7 +115,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ onShowToas
   };
 
   const handleBuyNow = () => {
-    if (!product || isOutOfStock || isSubmitting) return;
+    if (!product || isPurchaseDisabled || isSubmitting) return;
     setIsSubmitting(true);
     const validQty = Math.max(1, Math.min(quantity, maxStock));
     addToCart(product, validQty, selectedColor || undefined, selectedSize || undefined);
@@ -348,6 +353,23 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ onShowToas
             </div>
           )}
 
+          {/* Unavailable / Archived / Draft Notice */}
+          {isUnavailableListing && (
+            <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 flex items-start gap-3 text-xs text-amber-900 dark:text-amber-200">
+              <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <div className="font-extrabold text-sm">
+                  {isArchivedListing ? 'Listing Archived — Unavailable for Purchase' : 'Draft Listing — Not Yet Published'}
+                </div>
+                <p className="leading-relaxed text-amber-800 dark:text-amber-300">
+                  {isArchivedListing
+                    ? 'The merchant has archived this product listing. Historical order records remain preserved, but new purchases are disabled.'
+                    : 'This product is currently saved as a merchant draft and cannot be purchased on the storefront.'}
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Quantity Stepper & Actions */}
           <div className="space-y-3 pt-2">
             <div className="flex items-center gap-4">
@@ -358,18 +380,18 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ onShowToas
                 <button
                   type="button"
                   onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                  disabled={isOutOfStock || isSubmitting}
+                  disabled={isPurchaseDisabled || isSubmitting}
                   className="px-3 py-1.5 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 font-bold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   -
                 </button>
                 <span className="px-4 py-1.5 text-sm font-extrabold text-slate-900 dark:text-white">
-                  {isOutOfStock ? 0 : quantity}
+                  {isPurchaseDisabled ? 0 : quantity}
                 </span>
                 <button
                   type="button"
                   onClick={() => setQuantity((q) => Math.min(maxStock, q + 1))}
-                  disabled={isOutOfStock || quantity >= maxStock || isSubmitting}
+                  disabled={isPurchaseDisabled || quantity >= maxStock || isSubmitting}
                   className="px-3 py-1.5 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 font-bold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   +
@@ -377,7 +399,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ onShowToas
               </div>
             </div>
 
-            {isOutOfStock && (
+            {isOutOfStock && !isUnavailableListing && (
               <div className="text-xs font-bold text-rose-500 pt-1">
                 {t('product.outOfStock', 'This product is currently out of stock')}
               </div>
@@ -387,9 +409,9 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ onShowToas
               <button
                 type="button"
                 onClick={handleAddToCart}
-                disabled={isOutOfStock || isSubmitting}
+                disabled={isPurchaseDisabled || isSubmitting}
                 className={`flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl font-bold text-sm shadow-md transition-all ${
-                  isOutOfStock
+                  isPurchaseDisabled
                     ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700 cursor-not-allowed'
                     : justAdded
                     ? 'bg-emerald-600 text-white cursor-pointer shadow-emerald-600/20'
@@ -404,7 +426,15 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ onShowToas
                 ) : (
                   <>
                     <ShoppingBag className="w-4 h-4" />
-                    <span>{isOutOfStock ? t('product.outOfStock', 'Out of Stock') : t('product.addToCart', 'Add to Cart')}</span>
+                    <span>
+                      {isArchivedListing
+                        ? 'Listing Archived'
+                        : isDraftListing
+                        ? 'Draft Listing'
+                        : isOutOfStock
+                        ? t('product.outOfStock', 'Out of Stock')
+                        : t('product.addToCart', 'Add to Cart')}
+                    </span>
                   </>
                 )}
               </button>
@@ -412,9 +442,9 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ onShowToas
               <button
                 type="button"
                 onClick={handleBuyNow}
-                disabled={isOutOfStock || isSubmitting}
+                disabled={isPurchaseDisabled || isSubmitting}
                 className={`flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl font-bold text-sm shadow-md transition-all ${
-                  isOutOfStock
+                  isPurchaseDisabled
                     ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
                     : 'bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-950 cursor-pointer'
                 }`}

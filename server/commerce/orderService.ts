@@ -76,6 +76,14 @@ export class OrderService {
       if (!product) {
         throw new CommerceError('PRODUCT_NOT_FOUND', `Product '${item.productId}' not found in canonical catalogue.`, 404);
       }
+      if (product.status === 'archived' || product.status === 'draft') {
+        throw new CommerceError(
+          'PRODUCT_UNAVAILABLE',
+          `Product '${product.name}' is currently ${product.status} and cannot be purchased.`,
+          400,
+          { productId: product.id, status: product.status }
+        );
+      }
 
       const unitPrice = parseFloat(product.price.toFixed(2));
       const itemSubtotal = parseFloat((unitPrice * item.quantity).toFixed(2));
@@ -147,6 +155,14 @@ export class OrderService {
       if (!canonical) {
         throw new CommerceError('PRODUCT_NOT_FOUND', `Product '${pid}' does not exist in canonical catalogue.`, 404);
       }
+      if (canonical.status === 'archived' || canonical.status === 'draft') {
+        throw new CommerceError(
+          'PRODUCT_UNAVAILABLE',
+          `Product '${canonical.name}' is currently ${canonical.status} and cannot be purchased.`,
+          400,
+          { productId: canonical.id, status: canonical.status }
+        );
+      }
       productMap.set(pid, canonical);
     }
 
@@ -159,7 +175,7 @@ export class OrderService {
 
     // 4. Atomic Firestore Transaction: Read stock, validate, decrement, write order
     const orderId = `ORD-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
-    const trackingNumber = `APAI-EXP-${Math.floor(10000000 + Math.random() * 90000000)}`;
+    const nowIso = new Date().toISOString();
 
     const createdOrder = await runTransaction(db, async (transaction) => {
       // Step A: Read live stock inside transaction
@@ -172,6 +188,14 @@ export class OrderService {
         let liveStock = 20; // Default fallback if field omitted
         if (prodSnap.exists()) {
           const data = prodSnap.data();
+          if (data.status === 'archived' || data.status === 'draft') {
+            throw new CommerceError(
+              'PRODUCT_UNAVAILABLE',
+              `Product '${data.name || pid}' is currently ${data.status} and cannot be purchased.`,
+              400,
+              { productId: pid, status: data.status }
+            );
+          }
           liveStock = typeof data.stock === 'number' ? data.stock : (typeof data.stockCount === 'number' ? data.stockCount : 20);
         } else {
           const preloaded = productMap.get(pid);
@@ -260,12 +284,23 @@ export class OrderService {
         paymentStatus: 'pending', // Pending real payment settlement
         paymentMethod: input.paymentMethod || 'card',
         shippingAddress: input.shippingAddress,
-        trackingNumber,
+        trackingNumber: '',
         carrier: shipping.carrier,
         estimatedDelivery: shipping.estimatedDelivery,
+        trackingHistory: [
+          {
+            id: `evt_placed_${orderId}`,
+            status: 'Placed',
+            carrier: shipping.carrier,
+            notes: 'Order confirmed & inventory reserved on Apaibay Marketplace.',
+            source: 'platform',
+            updatedByUid: user.uid,
+            createdAt: nowIso,
+          },
+        ],
         idempotencyKey: input.idempotencyKey || null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: nowIso,
+        updatedAt: nowIso,
       };
 
       transaction.set(orderDocRef, orderPayload);

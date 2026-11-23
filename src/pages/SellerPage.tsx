@@ -2,39 +2,38 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import { useProducts } from '../context/ProductContext';
-import { SellerClient } from '../services/sellerClient';
+import { SellerClient, SellerProductPayload } from '../services/sellerClient';
 import {
   Seller,
   SellerLedgerEntry,
   SellerFinancialSummary,
-  Product,
   SellerPayoutRequest,
   PayoutMethod,
   SellerKycRecord,
   KycHistoryEvent,
   IdentityDocumentType,
+  Order,
+  OrderDispute,
+  Product,
 } from '../types';
+import { SellerOverviewPanel } from '../components/seller/SellerOverviewPanel';
+import { SellerInventoryPanel } from '../components/seller/SellerInventoryPanel';
+import { SellerOrdersPanel } from '../components/seller/SellerOrdersPanel';
+import { SellerAccountingPanel } from '../components/seller/SellerAccountingPanel';
+import { SellerProductModal } from '../components/seller/SellerProductModal';
+import { normalizeDisplayOrderStatus } from '../components/seller/sellerUtils';
 import {
-  DollarSign,
-  Package,
-  TrendingUp,
-  Star,
   Plus,
   CheckCircle2,
   XCircle,
   Clock,
   Store,
-  Boxes,
   X,
   AlertTriangle,
-  FileText,
   ShieldCheck,
-  RefreshCw,
   Globe,
   Building,
   Wallet,
-  ArrowUpRight,
-  Info,
   Upload,
   Lock,
   Eye,
@@ -47,17 +46,20 @@ interface SellerPageProps {
 export const SellerPage: React.FC<SellerPageProps> = ({ onShowToast }) => {
   const { t } = useLanguage();
   const { user, isAuthenticated, openAuthModal } = useAuth();
-  const { products, refreshProducts } = useProducts();
+  const { allProducts, refreshProducts } = useProducts();
 
   const [sellerProfile, setSellerProfile] = useState<Seller | null>(null);
   const [loadingProfile, setLoadingProfile] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<'listings' | 'ledger' | 'application'>('listings');
+  const [activeTab, setActiveTab] = useState<'overview' | 'listings' | 'orders' | 'ledger' | 'application'>('overview');
 
-  // Ledger & Payout state
+  // Ledger, Orders, Disputes & Payout state
   const [ledgerEntries, setLedgerEntries] = useState<SellerLedgerEntry[]>([]);
   const [financialSummary, setFinancialSummary] = useState<SellerFinancialSummary | null>(null);
   const [loadingLedger, setLoadingLedger] = useState<boolean>(false);
   const [payoutsList, setPayoutsList] = useState<SellerPayoutRequest[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState<boolean>(false);
+  const [disputes, setDisputes] = useState<OrderDispute[]>([]);
   const [ledgerSubTab, setLedgerSubTab] = useState<'transactions' | 'payouts'>('transactions');
   const [showPayoutModal, setShowPayoutModal] = useState<boolean>(false);
   const [payoutAmount, setPayoutAmount] = useState<string>('');
@@ -84,17 +86,9 @@ export const SellerPage: React.FC<SellerPageProps> = ({ onShowToast }) => {
   const [submittingApply, setSubmittingApply] = useState(false);
   const [isResubmitting, setIsResubmitting] = useState(false);
 
-  // New product form states
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
-  const [newPrice, setNewPrice] = useState('');
-  const [newOriginalPrice, setNewOriginalPrice] = useState('');
-  const [newCategory, setNewCategory] = useState('electronics');
-  const [newBrand, setNewBrand] = useState('');
-  const [newImage, setNewImage] = useState('https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800');
-  const [newDescription, setNewDescription] = useState('');
-  const [newStock, setNewStock] = useState('25');
-  const [publishing, setPublishing] = useState(false);
+  // Product create / edit modal state
+  const [showProductModal, setShowProductModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   // Seller KYC & Verification state
   const [kycRecord, setKycRecord] = useState<SellerKycRecord | null>(null);
@@ -179,18 +173,24 @@ export const SellerPage: React.FC<SellerPageProps> = ({ onShowToast }) => {
 
       if (canLoadFinancials) {
         setLoadingLedger(true);
+        setLoadingOrders(true);
         try {
-          const [ledgerData, payoutsData] = await Promise.all([
+          const [ledgerData, payoutsData, ordersData, disputesData] = await Promise.all([
             SellerClient.getLedger(),
             SellerClient.getPayouts().catch(() => []),
+            SellerClient.getMySellerOrders().catch(() => []),
+            SellerClient.getMyDisputes().catch(() => []),
           ]);
           setLedgerEntries(ledgerData.entries);
           setFinancialSummary(ledgerData.summary);
           setPayoutsList(payoutsData);
+          setOrders(ordersData);
+          setDisputes(disputesData);
         } catch (ledgerErr) {
-          console.warn('Could not fetch seller ledger or payouts:', ledgerErr);
+          console.warn('Could not fetch seller ledger or orders:', ledgerErr);
         } finally {
           setLoadingLedger(false);
+          setLoadingOrders(false);
         }
       }
     } catch (err: any) {
@@ -199,6 +199,26 @@ export const SellerPage: React.FC<SellerPageProps> = ({ onShowToast }) => {
       setLoadingProfile(false);
     }
   }, [isAuthenticated, user, populateFormWithSeller]);
+
+  const refreshOrdersAndLedger = useCallback(async () => {
+    if (!isAuthenticated || !user) return;
+    setLoadingOrders(true);
+    try {
+      const [ordersData, ledgerData, disputesData] = await Promise.all([
+        SellerClient.getMySellerOrders().catch(() => []),
+        SellerClient.getLedger().catch(() => null),
+        SellerClient.getMyDisputes().catch(() => []),
+      ]);
+      setOrders(ordersData);
+      setDisputes(disputesData);
+      if (ledgerData) {
+        setLedgerEntries(ledgerData.entries);
+        setFinancialSummary(ledgerData.summary);
+      }
+    } finally {
+      setLoadingOrders(false);
+    }
+  }, [isAuthenticated, user]);
 
   const handleRequestPayout = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -365,7 +385,7 @@ export const SellerPage: React.FC<SellerPageProps> = ({ onShowToast }) => {
       setIsResubmitting(false);
       onShowToast('Seller & KYC application submitted successfully! Status is PENDING_REVIEW.', 'success');
       await loadSellerData();
-      setActiveTab('listings');
+      setActiveTab('overview');
     } catch (err: any) {
       onShowToast(err?.message || 'Failed to submit seller application. Please check your information and try again.', 'error');
     } finally {
@@ -412,47 +432,44 @@ export const SellerPage: React.FC<SellerPageProps> = ({ onShowToast }) => {
     }
   };
 
-  const handleCreateProduct = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTitle.trim() || !newPrice) {
-      onShowToast('Please provide a title and price', 'error');
-      return;
+  const openCreateProductModal = () => {
+    setEditingProduct(null);
+    setShowProductModal(true);
+  };
+
+  const openEditProductModal = (product: Product) => {
+    setEditingProduct(product);
+    setShowProductModal(true);
+  };
+
+  const handleSaveProductModal = async (payload: SellerProductPayload) => {
+    if (
+      !sellerProfile ||
+      sellerProfile.verificationStatus !== 'verified' ||
+      sellerProfile.kycStatus === 'EXPIRED' ||
+      sellerProfile.kycStatus === 'SUSPENDED' ||
+      user?.status === 'suspended'
+    ) {
+      throw new Error('Only active verified sellers can create or edit product listings.');
     }
 
-    if (!sellerProfile || sellerProfile.verificationStatus !== 'verified') {
-      onShowToast('Only verified sellers can publish new product listings.', 'error');
-      return;
-    }
-
-    const priceNum = parseFloat(newPrice);
-    const originalPriceNum = newOriginalPrice ? parseFloat(newOriginalPrice) : priceNum * 1.2;
-    const stockNum = parseInt(newStock, 10) || 25;
-
-    try {
-      setPublishing(true);
-      await SellerClient.publishProduct({
-        name: newTitle.trim(),
-        price: priceNum,
-        originalPrice: originalPriceNum,
-        category: newCategory,
-        brand: newBrand.trim() || sellerProfile.storeName,
-        image: newImage.trim(),
-        description: newDescription.trim() || `${sellerProfile.storeName} official merchandise.`,
-        stock: stockNum,
-      });
-
+    if (editingProduct) {
+      await SellerClient.updateProduct(editingProduct.id, payload);
       await refreshProducts();
-      setShowAddModal(false);
-      setNewTitle('');
-      setNewPrice('');
-      setNewOriginalPrice('');
-      setNewDescription('');
-      setNewBrand('');
-      onShowToast(`Product "${newTitle.trim()}" published to marketplace!`, 'success');
-    } catch (err: any) {
-      onShowToast(err?.message || 'Failed to publish product.', 'error');
-    } finally {
-      setPublishing(false);
+      setShowProductModal(false);
+      setEditingProduct(null);
+      onShowToast(`Updated "${payload.name}" successfully.`, 'success');
+    } else {
+      await SellerClient.publishProduct(payload);
+      await refreshProducts();
+      setShowProductModal(false);
+      setEditingProduct(null);
+      onShowToast(
+        payload.status === 'draft'
+          ? `Saved "${payload.name}" as a merchant draft.`
+          : `Product "${payload.name}" published to marketplace!`,
+        'success'
+      );
     }
   };
 
@@ -499,11 +516,17 @@ export const SellerPage: React.FC<SellerPageProps> = ({ onShowToast }) => {
   const isRejected = effectiveKycStatus === 'REJECTED';
   const isExpired = effectiveKycStatus === 'EXPIRED';
   const isSuspended = effectiveKycStatus === 'SUSPENDED';
+  const isAccountSuspended = user?.status === 'suspended' || isSuspended;
+  const canPerformActiveMerchantOps = isVerified && !isAccountSuspended;
 
-  // Filter products strictly owned by current authenticated user
-  const sellerProducts = products.filter(
+  // Filter products strictly owned by current authenticated user (including drafts & archived)
+  const sellerProducts = allProducts.filter(
     (p) => p.sellerId === user?.uid || (p.seller && p.seller.id === user?.uid)
   );
+  const pendingOrdersCount = orders.filter((o) => {
+    const st = normalizeDisplayOrderStatus(o.orderStatus || o.status);
+    return st === 'Placed' || st === 'Processing';
+  }).length;
 
   const availableCategories = [
     { id: 'electronics', labelEn: 'Electronics & Gadgets', labelKm: 'គ្រឿងអេឡិចត្រូនិច' },
@@ -589,10 +612,10 @@ export const SellerPage: React.FC<SellerPageProps> = ({ onShowToast }) => {
               <span>{showKycSection ? 'Hide KYC Vault' : 'KYC Verification Vault'}</span>
             </button>
           )}
-          {isVerified && (
+          {canPerformActiveMerchantOps && (
             <button
               type="button"
-              onClick={() => setShowAddModal(true)}
+              onClick={openCreateProductModal}
               className="px-5 py-3 rounded-2xl bg-[#ff6a00] hover:bg-[#e05d00] text-white font-bold text-xs sm:text-sm shadow-md flex items-center gap-2 transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
@@ -1132,438 +1155,145 @@ export const SellerPage: React.FC<SellerPageProps> = ({ onShowToast }) => {
         </div>
       )}
 
-      {/* Merchant Dashboard Navigation Tabs (Available for Verified, and Ledger preserved for Expired/Suspended) */}
+      {/* Account-Level Suspension Notice */}
+      {user?.status === 'suspended' && (
+        <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 text-xs text-rose-900 dark:text-rose-200 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+          <div>
+            <span className="font-bold">Account Suspended:</span> Catalog updates, order fulfillment actions, and payout withdrawals are disabled while your account is suspended.
+          </div>
+        </div>
+      )}
+
+      {/* Merchant Dashboard Navigation Tabs (Available for Verified, and Ledger/Orders preserved read-only for Expired/Suspended) */}
       {(isVerified || isExpired || isSuspended) && (
-        <div className="flex border-b border-slate-200 dark:border-slate-800 gap-6 text-xs font-bold">
+        <div className="flex border-b border-slate-200 dark:border-slate-800 gap-4 sm:gap-6 text-xs font-bold overflow-x-auto">
+          {isVerified && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('overview')}
+              className={`pb-3 px-1 cursor-pointer border-b-2 whitespace-nowrap transition-colors ${
+                activeTab === 'overview'
+                  ? 'border-[#ff6a00] text-[#ff6a00]'
+                  : 'border-transparent text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              }`}
+            >
+              Overview &amp; Sales
+            </button>
+          )}
           {isVerified && (
             <button
               type="button"
               onClick={() => setActiveTab('listings')}
-              className={`pb-3 cursor-pointer border-b-2 transition-colors ${
+              className={`pb-3 px-1 cursor-pointer border-b-2 whitespace-nowrap transition-colors ${
                 activeTab === 'listings'
                   ? 'border-[#ff6a00] text-[#ff6a00]'
                   : 'border-transparent text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
               }`}
             >
-              My Product Listings ({sellerProducts.length})
+              Catalog &amp; Inventory ({sellerProducts.length})
             </button>
           )}
           <button
             type="button"
-            onClick={() => setActiveTab('ledger')}
-            className={`pb-3 cursor-pointer border-b-2 transition-colors ${
-              activeTab === 'ledger' || !isVerified
+            onClick={() => setActiveTab('orders')}
+            className={`pb-3 px-1 cursor-pointer border-b-2 whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+              activeTab === 'orders'
                 ? 'border-[#ff6a00] text-[#ff6a00]'
                 : 'border-transparent text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
             }`}
           >
-            Commission &amp; Earnings Ledger
+            <span>Orders ({orders.length})</span>
+            {pendingOrdersCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-[#ff6a00]/15 text-[#ff6a00] font-extrabold tabular-nums">
+                {pendingOrdersCount}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('ledger')}
+            className={`pb-3 px-1 cursor-pointer border-b-2 whitespace-nowrap transition-colors ${
+              activeTab === 'ledger' || (!isVerified && activeTab !== 'orders')
+                ? 'border-[#ff6a00] text-[#ff6a00]'
+                : 'border-transparent text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+            }`}
+          >
+            Earnings &amp; Payouts
           </button>
         </div>
       )}
 
-      {/* Verified Merchant KPI Metrics */}
-      {isVerified && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
-            <span className="text-xs text-slate-400 font-semibold">Net Calculated Earnings</span>
-            <div className="text-xl sm:text-2xl font-extrabold text-[#ff6a00]">
-              ${financialSummary ? financialSummary.netCalculatedEarnings.toFixed(2) : '0.00'}
-            </div>
-            <span className="text-[11px] text-slate-400">After 5% commission</span>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
-            <span className="text-xs text-slate-400 font-semibold">Gross Sales</span>
-            <div className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white">
-              ${financialSummary ? financialSummary.grossSalesMerchandise.toFixed(2) : '0.00'}
-            </div>
-            <span className="text-[11px] text-emerald-500 font-bold">Eligible merchandise</span>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
-            <span className="text-xs text-slate-400 font-semibold">Published Catalog</span>
-            <div className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white">
-              {sellerProducts.length}
-            </div>
-            <span className="text-[11px] text-slate-400">Active store items</span>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
-            <span className="text-xs text-slate-400 font-semibold">Available for Payout</span>
-            <div className="text-xl sm:text-2xl font-extrabold text-emerald-500">
-              ${financialSummary ? (financialSummary.availableForPayout || 0).toFixed(2) : '0.00'}
-            </div>
-            <span className="text-[11px] text-slate-400">
-              Pending: ${(financialSummary?.pendingSettlement || 0).toFixed(2)} • Sandbox Batch
-            </span>
-          </div>
-        </div>
+      {/* Tab: Overview & Sales Statistics */}
+      {isVerified && activeTab === 'overview' && (
+        <SellerOverviewPanel
+          sellerUid={user?.uid}
+          isVerified={isVerified}
+          isSuspendedOrInactive={isAccountSuspended}
+          effectiveKycStatus={effectiveKycStatus}
+          products={sellerProducts}
+          orders={orders}
+          ledgerEntries={ledgerEntries}
+          disputes={disputes}
+          financialSummary={financialSummary}
+          loadingData={loadingLedger || loadingOrders}
+          onNavigateTab={(tab) => setActiveTab(tab)}
+          onOpenPayoutModal={() => {
+            setPayoutAmount(((financialSummary?.availableForPayout || 0)).toFixed(2));
+            setShowPayoutModal(true);
+          }}
+          onOpenAddModal={openCreateProductModal}
+        />
       )}
 
-      {/* Tab: Listings */}
+      {/* Tab: Catalog & Inventory Management */}
       {isVerified && activeTab === 'listings' && (
-        <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-            <div>
-              <h2 className="text-base font-extrabold text-slate-900 dark:text-white">
-                Store Catalog Listings ({sellerProducts.length})
-              </h2>
-              <p className="text-xs text-slate-400">
-                Products published under store &quot;{sellerProfile?.storeName}&quot;
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowAddModal(true)}
-              className="px-3.5 py-1.5 rounded-xl bg-[#ff6a00] hover:bg-[#e05d00] text-white font-bold text-xs cursor-pointer shadow-xs transition-all"
-            >
-              Add Listing
-            </button>
-          </div>
-
-          {sellerProducts.length === 0 ? (
-            <div className="py-12 text-center text-xs text-slate-400 space-y-2">
-              <Boxes className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-700" />
-              <p>You haven&apos;t published any product listings yet.</p>
-              <button
-                type="button"
-                onClick={() => setShowAddModal(true)}
-                className="text-[#ff6a00] font-bold hover:underline cursor-pointer"
-              >
-                Publish your first product
-              </button>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 font-semibold">
-                    <th className="py-3 px-2">Product</th>
-                    <th className="py-3 px-2">Category</th>
-                    <th className="py-3 px-2">Price</th>
-                    <th className="py-3 px-2">Status</th>
-                    <th className="py-3 px-2">Stock</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {sellerProducts.map((prod) => (
-                    <tr key={prod.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-                      <td className="py-3 px-2 flex items-center gap-3">
-                        <img
-                          src={prod.image || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=150'}
-                          alt={prod.name}
-                          className="w-10 h-10 rounded-lg object-cover bg-slate-100 dark:bg-slate-800 shrink-0"
-                        />
-                        <div className="max-w-xs truncate font-bold text-slate-900 dark:text-white">
-                          {prod.name}
-                        </div>
-                      </td>
-                      <td className="py-3 px-2 capitalize text-slate-500">{prod.category}</td>
-                      <td className="py-3 px-2 font-bold text-slate-900 dark:text-white">
-                        ${prod.price.toFixed(2)}
-                      </td>
-                      <td className="py-3 px-2">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600">
-                          Active
-                        </span>
-                      </td>
-                      <td className="py-3 px-2 text-slate-600 dark:text-slate-400 font-mono">
-                        {prod.stockCount ?? prod.stock ?? 25} units
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        <SellerInventoryPanel
+          storeName={sellerProfile?.storeName || 'Your Store'}
+          products={sellerProducts}
+          canManageCatalog={canPerformActiveMerchantOps}
+          onOpenAddModal={openCreateProductModal}
+          onOpenEditModal={openEditProductModal}
+          onRefreshProducts={refreshProducts}
+          onShowToast={onShowToast}
+        />
       )}
 
-      {/* Tab: Commission & Earnings Ledger & Payouts */}
-      {(isVerified || isExpired || isSuspended) && (activeTab === 'ledger' || !isVerified) && (
-        <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
-            <div>
-              <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-                <Wallet className="w-5 h-5 text-[#ff6a00]" />
-                <span>Seller Settlement &amp; Payouts</span>
-              </h2>
-              <p className="text-xs text-slate-400">
-                Server-authoritative ledger with {financialSummary?.settlementHoldDays ?? 7}-day delivery return window &amp; withdrawal tracking ({((financialSummary?.commissionRate ?? 0.05) * 100).toFixed(1)}% platform commission)
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={loadSellerData}
-                disabled={loadingLedger}
-                className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-900 dark:hover:text-white cursor-pointer"
-                title="Refresh Settlement Ledger"
-              >
-                <RefreshCw className={`w-4 h-4 ${loadingLedger ? 'animate-spin' : ''}`} />
-              </button>
-              <button
-                type="button"
-                disabled={
-                  !isVerified ||
-                  (financialSummary?.availableForPayout || 0) < (financialSummary?.minimumPayoutAmount || 20) ||
-                  (financialSummary?.activePayoutRequestCount || 0) > 0
-                }
-                title={!isVerified ? 'Verified KYC status required to request payouts.' : undefined}
-                onClick={() => {
-                  setPayoutAmount(((financialSummary?.availableForPayout || 0)).toFixed(2));
-                  setShowPayoutModal(true);
-                }}
-                className="px-4 py-2 rounded-xl bg-[#ff6a00] hover:bg-[#e05d00] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer transition-all"
-              >
-                <ArrowUpRight className="w-4 h-4" />
-                <span>{isVerified ? 'Request Payout' : `Payout Locked (KYC ${effectiveKycStatus})`}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Honest Provider Limitation Banner */}
-          <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 flex items-start gap-3 text-xs">
-            <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-            <div className="text-amber-900 dark:text-amber-200 space-y-0.5">
-              <div className="font-bold">Sandbox Corporate Batch Settlement Notice</div>
-              <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
-                {financialSummary?.providerLimitationNotice ||
-                  'PAYMENT_ENVIRONMENT=sandbox: Local payment gateways operate as one-way acquiring APIs and do not execute automated sub-merchant split custody. Approved payout requests are recorded for Finance Manager batch settlement and confirmed upon provider reference.'}
-              </p>
-            </div>
-          </div>
-
-          {/* 6 Settlement Summary Metrics */}
-          {financialSummary && (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
-                <span className="text-slate-400 text-[11px]">Total Sales</span>
-                <div className="font-extrabold text-base text-slate-900 dark:text-white mt-0.5">
-                  ${(financialSummary.totalSales ?? financialSummary.grossSalesMerchandise).toFixed(2)}
-                </div>
-              </div>
-              <div className="p-4 rounded-2xl bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-800/40">
-                <span className="text-amber-700 dark:text-amber-400 text-[11px]">Pending Settlement</span>
-                <div className="font-extrabold text-base text-amber-600 dark:text-amber-400 mt-0.5">
-                  ${(financialSummary.pendingSettlement || 0).toFixed(2)}
-                </div>
-              </div>
-              <div className="p-4 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200/80 dark:border-emerald-800/40">
-                <span className="text-emerald-700 dark:text-emerald-400 text-[11px]">Available for Payout</span>
-                <div className="font-extrabold text-base text-emerald-600 dark:text-emerald-400 mt-0.5">
-                  ${(financialSummary.availableForPayout || 0).toFixed(2)}
-                </div>
-                {(financialSummary.reservedForPayout || 0) > 0 && (
-                  <span className="text-[10px] text-blue-500 font-semibold block">
-                    +${(financialSummary.reservedForPayout || 0).toFixed(2)} in review
-                  </span>
-                )}
-              </div>
-              <div className="p-4 rounded-2xl bg-rose-50/70 dark:bg-rose-950/20 border border-rose-200/80 dark:border-rose-800/40">
-                <span className="text-rose-700 dark:text-rose-400 text-[11px]">On Hold (Disputes)</span>
-                <div className="font-extrabold text-base text-rose-600 dark:text-rose-400 mt-0.5">
-                  ${(financialSummary.onHold || 0).toFixed(2)}
-                </div>
-              </div>
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
-                <span className="text-slate-400 text-[11px]">Total Commission</span>
-                <div className="font-extrabold text-base text-rose-500 mt-0.5">
-                  -${(financialSummary.totalCommission ?? financialSummary.platformCommissionDeducted).toFixed(2)}
-                </div>
-              </div>
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
-                <span className="text-slate-400 text-[11px]">Total Paid Out</span>
-                <div className="font-extrabold text-base text-blue-600 dark:text-blue-400 mt-0.5">
-                  ${(financialSummary.totalPaidOut || 0).toFixed(2)}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Sub-Tab Toggle */}
-          <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 text-xs font-bold">
-            <button
-              type="button"
-              onClick={() => setLedgerSubTab('transactions')}
-              className={`px-3 py-2 border-b-2 transition-colors cursor-pointer ${
-                ledgerSubTab === 'transactions'
-                  ? 'border-[#ff6a00] text-[#ff6a00]'
-                  : 'border-transparent text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-              }`}
-            >
-              Transaction Ledger ({ledgerEntries.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setLedgerSubTab('payouts')}
-              className={`px-3 py-2 border-b-2 transition-colors cursor-pointer ${
-                ledgerSubTab === 'payouts'
-                  ? 'border-[#ff6a00] text-[#ff6a00]'
-                  : 'border-transparent text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-              }`}
-            >
-              Payout History ({payoutsList.length})
-            </button>
-          </div>
-
-          {/* Sub-Tab 1: Transaction Ledger */}
-          {ledgerSubTab === 'transactions' && (
-            ledgerEntries.length === 0 ? (
-              <div className="py-10 text-center text-xs text-slate-400 space-y-1">
-                <FileText className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-700" />
-                <p>No transaction ledger records found yet.</p>
-                <p className="text-[11px]">As customer orders are paid and delivered, settlement statuses appear here.</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 font-semibold">
-                      <th className="py-3 px-2">Order Reference</th>
-                      <th className="py-3 px-2">Product</th>
-                      <th className="py-3 px-2">Settlement Status</th>
-                      <th className="py-3 px-2">Eligible Subtotal</th>
-                      <th className="py-3 px-2">Commission</th>
-                      <th className="py-3 px-2 font-bold text-right">Net Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {ledgerEntries.map((entry) => {
-                      const isAdjustment = entry.type !== 'sale';
-                      const statusStyle =
-                        entry.status === 'available'
-                          ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600'
-                          : entry.status === 'pending_settlement' || entry.status === 'calculated'
-                          ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-600'
-                          : entry.status === 'held'
-                          ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-600'
-                          : entry.status === 'settled'
-                          ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-600'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500';
-                      return (
-                        <tr key={entry.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-                          <td className="py-3 px-2 font-mono font-bold text-slate-900 dark:text-white">
-                            #{entry.orderId}
-                          </td>
-                          <td className="py-3 px-2 text-slate-700 dark:text-slate-300">
-                            <div>{entry.productName} (x{entry.quantity})</div>
-                            {entry.settlementEligibleAt && entry.status === 'pending_settlement' && (
-                              <div className="text-[10px] text-amber-600 dark:text-amber-400">
-                                Releases after {new Date(entry.settlementEligibleAt).toLocaleDateString()}
-                              </div>
-                            )}
-                          </td>
-                          <td className="py-3 px-2">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${statusStyle}`}>
-                              {isAdjustment ? entry.type.replace('_', ' ') : (entry.status || 'calculated').replace('_', ' ')}
-                            </span>
-                          </td>
-                          <td className="py-3 px-2 font-mono">${entry.eligibleSubtotal.toFixed(2)}</td>
-                          <td className="py-3 px-2 font-mono text-slate-500">${entry.commissionAmount.toFixed(2)}</td>
-                          <td
-                            className={`py-3 px-2 font-mono font-bold text-right ${
-                              !isAdjustment
-                                ? 'text-emerald-600 dark:text-emerald-400'
-                                : 'text-rose-600 dark:text-rose-400'
-                            }`}
-                          >
-                            ${entry.netAmount.toFixed(2)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )
-          )}
-
-          {/* Sub-Tab 2: Payout History */}
-          {ledgerSubTab === 'payouts' && (
-            payoutsList.length === 0 ? (
-              <div className="py-10 text-center text-xs text-slate-400 space-y-2">
-                <Wallet className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-700" />
-                <p>No payout requests submitted yet.</p>
-                <p className="text-[11px]">
-                  Once delivered orders clear the dispute return window (min ${financialSummary?.minimumPayoutAmount?.toFixed(2) || '20.00'} USD), you can request a payout here.
-                </p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 font-semibold">
-                      <th className="py-3 px-2">Payout ID</th>
-                      <th className="py-3 px-2">Amount</th>
-                      <th className="py-3 px-2">Destination (Masked)</th>
-                      <th className="py-3 px-2">Status</th>
-                      <th className="py-3 px-2">Requested</th>
-                      <th className="py-3 px-2">Reference / Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {payoutsList.map((p) => {
-                      const pStyle =
-                        p.status === 'completed'
-                          ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400'
-                          : p.status === 'approved'
-                          ? 'bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400'
-                          : p.status === 'held'
-                          ? 'bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-400'
-                          : p.status === 'rejected' || p.status === 'failed'
-                          ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400'
-                          : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400';
-                      return (
-                        <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                          <td className="py-3 px-2 font-mono font-bold text-slate-900 dark:text-white">#{p.id.slice(0, 14)}</td>
-                          <td className="py-3 px-2 font-extrabold text-slate-900 dark:text-white">
-                            ${p.amount.toFixed(2)} {p.currency}
-                          </td>
-                          <td className="py-3 px-2">
-                            <div className="font-semibold text-slate-700 dark:text-slate-300 uppercase text-[11px]">
-                              {p.destination.method.replace('_', ' ')}
-                            </div>
-                            <div className="text-[11px] text-slate-400">
-                              {p.destination.accountName} • {p.destination.maskedAccountNumber || p.destination.accountNumber}
-                            </div>
-                          </td>
-                          <td className="py-3 px-2">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${pStyle}`}>
-                              {p.status.replace('_', ' ')}
-                            </span>
-                          </td>
-                          <td className="py-3 px-2 text-slate-400 text-[11px]">
-                            {new Date(p.requestedAt).toLocaleDateString()}
-                          </td>
-                          <td className="py-3 px-2 text-[11px]">
-                            {p.disbursementReference && (
-                              <span className="font-mono text-emerald-600 font-bold">{p.disbursementReference}</span>
-                            )}
-                            {p.rejectionReason && (
-                              <span className="text-rose-500">Rejected: {p.rejectionReason}</span>
-                            )}
-                            {p.failureReason && (
-                              <span className="text-rose-500">Failed: {p.failureReason} (Funds restored)</span>
-                            )}
-                            {!p.disbursementReference && !p.rejectionReason && !p.failureReason && (
-                              <span className="text-slate-400">{p.adminNotes || 'Pending verification'}</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )
-          )}
-        </div>
+      {/* Tab: Orders & Fulfillment */}
+      {(isVerified || isExpired || isSuspended) && activeTab === 'orders' && (
+        <SellerOrdersPanel
+          sellerUid={user?.uid}
+          orders={orders}
+          loadingOrders={loadingOrders}
+          canFulfillOrders={canPerformActiveMerchantOps}
+          onRefreshOrders={refreshOrdersAndLedger}
+          onShowToast={onShowToast}
+        />
       )}
+
+      {/* Tab: Commission, Pending Settlement & Available Payouts */}
+      {(isVerified || isExpired || isSuspended) &&
+        (activeTab === 'ledger' || (!isVerified && activeTab !== 'orders')) && (
+          <SellerAccountingPanel
+            isVerified={canPerformActiveMerchantOps}
+            effectiveKycStatus={effectiveKycStatus}
+            financialSummary={financialSummary}
+            ledgerEntries={ledgerEntries}
+            payoutsList={payoutsList}
+            disputes={disputes}
+            loadingLedger={loadingLedger}
+            ledgerSubTab={ledgerSubTab}
+            onChangeLedgerSubTab={setLedgerSubTab}
+            onRefresh={loadSellerData}
+            onOpenPayoutModal={() => {
+              setPayoutAmount(((financialSummary?.availableForPayout || 0)).toFixed(2));
+              setShowPayoutModal(true);
+            }}
+          />
+        )}
 
       {/* Request Payout Modal */}
-      {showPayoutModal && isVerified && (
+      {showPayoutModal && canPerformActiveMerchantOps && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
@@ -1714,143 +1444,18 @@ export const SellerPage: React.FC<SellerPageProps> = ({ onShowToast }) => {
         </div>
       )}
 
-      {/* Add New Product Modal */}
-      {showAddModal && isVerified && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
-                Add New Product Listing
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowAddModal(false)}
-                className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateProduct} className="space-y-4 text-xs">
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">Product Title *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Wireless Noise-Cancelling Headphones"
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700 dark:text-slate-300">Sale Price ($) *</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    placeholder="99.99"
-                    value={newPrice}
-                    onChange={(e) => setNewPrice(e.target.value)}
-                    className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700 dark:text-slate-300">Original Price ($)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="129.99"
-                    value={newOriginalPrice}
-                    onChange={(e) => setNewOriginalPrice(e.target.value)}
-                    className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700 dark:text-slate-300">Category</label>
-                  <select
-                    value={newCategory}
-                    onChange={(e) => setNewCategory(e.target.value)}
-                    className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                  >
-                    <option value="electronics">Electronics</option>
-                    <option value="fashion">Fashion</option>
-                    <option value="home-kitchen">Home & Kitchen</option>
-                    <option value="beauty">Beauty & Personal</option>
-                    <option value="sports">Sports & Outdoor</option>
-                    <option value="gaming">Gaming & VR</option>
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700 dark:text-slate-300">Brand</label>
-                  <input
-                    type="text"
-                    placeholder={sellerProfile.storeName}
-                    value={newBrand}
-                    onChange={(e) => setNewBrand(e.target.value)}
-                    className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700 dark:text-slate-300">Initial Stock</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={newStock}
-                    onChange={(e) => setNewStock(e.target.value)}
-                    className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700 dark:text-slate-300">Image URL</label>
-                  <input
-                    type="url"
-                    value={newImage}
-                    onChange={(e) => setNewImage(e.target.value)}
-                    className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300">Description</label>
-                <textarea
-                  rows={3}
-                  value={newDescription}
-                  onChange={(e) => setNewDescription(e.target.value)}
-                  placeholder="Describe product craftsmanship, specifications, and warranty..."
-                  className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 font-bold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={publishing}
-                  className="px-5 py-2.5 rounded-xl bg-[#ff6a00] hover:bg-[#e05d00] text-white font-bold cursor-pointer"
-                >
-                  {publishing ? 'Publishing...' : 'Publish Listing'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Create / Edit Product Modal */}
+      <SellerProductModal
+        isOpen={showProductModal && canPerformActiveMerchantOps}
+        mode={editingProduct ? 'edit' : 'create'}
+        storeName={sellerProfile?.storeName || 'Your Store'}
+        initialProduct={editingProduct}
+        onClose={() => {
+          setShowProductModal(false);
+          setEditingProduct(null);
+        }}
+        onSubmit={handleSaveProductModal}
+      />
     </div>
   );
 };

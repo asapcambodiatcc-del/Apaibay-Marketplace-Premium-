@@ -114,10 +114,10 @@ export const OrdersModal: React.FC<OrdersModalProps> = ({
                     {t('orders.liveDispatch', 'Live Dispatch Info')}
                   </span>
                   <div className="text-sm font-mono font-bold text-[#ff6a00]">
-                    {selectedOrder.trackingNumber}
+                    {selectedOrder.trackingNumber || 'Awaiting seller tracking'}
                   </div>
                   <div className="text-xs text-slate-500">
-                    {t('orders.carrier', 'Carrier:')} {selectedOrder.carrier}
+                    {t('orders.carrier', 'Carrier:')} {selectedOrder.carrier || 'Pending carrier'}
                   </div>
                 </div>
                 <div className="text-right">
@@ -177,28 +177,39 @@ export const OrdersModal: React.FC<OrdersModalProps> = ({
                   {t('orders.items', 'Purchased Items')}
                 </div>
                 <div className="space-y-2 divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-                  {selectedOrder.items.map((item, i) => (
-                    <div key={i} className="pt-2 first:pt-0 flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <img
-                          src={item.product?.image || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=150&q=80'}
-                          alt={item.product?.name || 'Item'}
-                          className="w-10 h-10 rounded-lg object-cover bg-slate-100"
-                        />
-                        <div className="truncate max-w-[200px]">
-                          <div className="font-bold text-slate-900 dark:text-white truncate">
-                            {item.product.name}
-                          </div>
-                          <div className="text-[10px] text-slate-400">
-                            Qty: {item.quantity}
+                  {selectedOrder.items.map((rawItem: any, i) => {
+                    const itemName = rawItem?.name || rawItem?.product?.name || 'Marketplace Product';
+                    const itemImage =
+                      rawItem?.image ||
+                      rawItem?.product?.image ||
+                      'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=150&q=80';
+                    const unitPrice = Number(rawItem?.unitPrice ?? rawItem?.product?.price ?? 0);
+                    const qty = Math.max(1, Number(rawItem?.quantity ?? 1));
+                    const lineTotal = typeof rawItem?.subtotal === 'number' ? rawItem.subtotal : unitPrice * qty;
+
+                    return (
+                      <div key={i} className="pt-2 first:pt-0 flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <img
+                            src={itemImage}
+                            alt={itemName}
+                            className="w-10 h-10 rounded-lg object-cover bg-slate-100"
+                          />
+                          <div className="truncate max-w-[200px]">
+                            <div className="font-bold text-slate-900 dark:text-white truncate">
+                              {itemName}
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              Qty: {qty}
+                            </div>
                           </div>
                         </div>
+                        <span className="font-bold text-slate-800 dark:text-slate-200 tabular-nums">
+                          ${lineTotal.toFixed(2)}
+                        </span>
                       </div>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">
-                        ${(item.product.price * item.quantity).toFixed(2)}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 

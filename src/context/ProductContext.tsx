@@ -1,9 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { Product, CategoryItem } from '../types';
 import { productRepository } from '../repositories';
 
 interface ProductContextType {
   products: Product[];
+  allProducts: Product[];
   categories: CategoryItem[];
   loading: boolean;
   error: string | null;
@@ -16,20 +17,20 @@ interface ProductContextType {
 const ProductContext = createContext<ProductContextType | undefined>(undefined);
 
 export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchProductsAndCategories = useCallback(async () => {
+  const fetchProductsAndCategories = useCallback(async (forceRefresh: boolean = false) => {
     try {
       setLoading(true);
       setError(null);
-      const [allProducts, allCategories] = await Promise.all([
-        productRepository.getAll(),
+      const [fetchedProducts, allCategories] = await Promise.all([
+        productRepository.getAll(forceRefresh),
         productRepository.getCategories(),
       ]);
-      setProducts(allProducts);
+      setAllProducts(fetchedProducts);
       setCategories(allCategories);
     } catch (err) {
       console.error('Failed to load catalog:', err);
@@ -40,36 +41,47 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   useEffect(() => {
-    fetchProductsAndCategories();
+    fetchProductsAndCategories(false);
   }, [fetchProductsAndCategories]);
+
+  // Public storefront catalog strictly excludes archived and draft products
+  const products = useMemo(
+    () => allProducts.filter((p) => p.status !== 'archived' && p.status !== 'draft'),
+    [allProducts]
+  );
 
   const addProduct = async (productData: Omit<Product, 'id'>): Promise<Product> => {
     const created = await productRepository.create(productData);
-    setProducts((prev) => [created, ...prev]);
+    setAllProducts((prev) => [created, ...prev]);
     return created;
   };
 
   const getProductBySlug = useCallback((slug: string): Product | undefined => {
     if (!slug) return undefined;
-    return products.find((p) => p.slug === slug || p.id === slug);
-  }, [products]);
+    return allProducts.find((p) => p.slug === slug || p.id === slug);
+  }, [allProducts]);
 
   const getProductById = useCallback((id: string): Product | undefined => {
     if (!id) return undefined;
-    return products.find((p) => p.id === id);
-  }, [products]);
+    return allProducts.find((p) => p.id === id);
+  }, [allProducts]);
+
+  const refreshProducts = useCallback(async () => {
+    await fetchProductsAndCategories(true);
+  }, [fetchProductsAndCategories]);
 
   return (
     <ProductContext.Provider
       value={{
         products,
+        allProducts,
         categories,
         loading,
         error,
         addProduct,
         getProductBySlug,
         getProductById,
-        refreshProducts: fetchProductsAndCategories,
+        refreshProducts,
       }}
     >
       {children}

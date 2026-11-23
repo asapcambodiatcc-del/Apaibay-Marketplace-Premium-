@@ -26,6 +26,7 @@ import { createRateLimiter } from '../auth/rateLimiter';
 import { SellerLedgerService } from '../commerce/sellerLedgerService';
 import { KycService } from '../commerce/kycService';
 import { validateStatusTransition, normalizeStatus } from '../commerce/orderLifecycle';
+import { applyOrderStatusTransition } from '../commerce/orderTrackingService';
 
 const router = express.Router();
 
@@ -517,83 +518,37 @@ router.patch('/orders/:id/status', verifyFirebaseUser, requirePermission('manage
   const orderId = req.params.id;
   const { status, reason } = req.body;
 
-  const ALLOWED_RAW_STATUSES = [
-    'Placed',
-    'Order Placed',
-    'Processing',
-    'Shipped',
-    'Out for Delivery',
-    'Delivered',
-    'Cancelled',
-    'Canceled',
-  ];
-
-  if (!status || typeof status !== 'string' || !ALLOWED_RAW_STATUSES.includes(status.trim())) {
-    res.status(400).json({
-      success: false,
-      error: { code: 'INVALID_STATUS', message: 'A valid target order status is required.' },
-    });
-    return;
-  }
-
   const orderRef = doc(db, 'orders', orderId);
-  const snap = await getDoc(orderRef);
-  if (!snap.exists()) {
-    res.status(404).json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'Order not found.' } });
-    return;
-  }
+  const prevSnap = await getDoc(orderRef);
+  const prevStatus = prevSnap.exists() ? (prevSnap.data() as any).status : undefined;
 
-  const prev = snap.data() as any;
-  const validation = validateStatusTransition(prev.status || 'Placed', status, prev, req.user!);
-  if (!validation.allowed) {
-    res.status(400).json({
+  const result = await applyOrderStatusTransition(orderId, req.body, req.user!);
+  if (!result.ok) {
+    res.status(result.status).json({
       success: false,
       error: {
-        code: validation.code || 'INVALID_STATUS_TRANSITION',
-        message: validation.message || 'Status transition rejected by order lifecycle state machine.',
+        code: result.code || 'INVALID_STATUS_TRANSITION',
+        message: result.message || 'Status transition rejected by order lifecycle state machine.',
       },
     });
     return;
   }
 
-  const canonicalNewStatus = normalizeStatus(status);
-  const now = new Date().toISOString();
-
-  await updateDoc(orderRef, {
-    status: canonicalNewStatus,
-    orderStatus: canonicalNewStatus,
-    statusOverrideReason: reason || 'Administrative lifecycle transition',
-    updatedAt: now,
-    statusOverriddenBy: req.user!.email || req.user!.uid,
-  });
-
-  // Synchronize settlement window & cancellation adjustments with SellerLedgerService
-  if (canonicalNewStatus === 'Cancelled') {
-    try {
-      await SellerLedgerService.recordOrderAdjustment(orderId, 'cancellation_adjustment');
-    } catch (adjErr: any) {
-      console.warn('[AdminRoutes] Non-blocking cancellation adjustment warning:', adjErr?.message || 'Unknown error');
-    }
-  } else if (canonicalNewStatus === 'Delivered') {
-    try {
-      await SellerLedgerService.confirmDeliverySettlement(orderId);
-    } catch (delivErr: any) {
-      console.warn('[AdminRoutes] Non-blocking delivery settlement warning:', delivErr?.message || 'Unknown error');
-    }
-  }
+  const canonicalNewStatus = result.order?.status || normalizeStatus(status);
 
   await AdminActivityLogService.logAction({
     admin: req.user!,
     action: 'ORDER_STATUS_UPDATE',
     targetResourceId: orderId,
     targetResourceType: 'order',
-    previousValue: { status: prev.status },
+    previousValue: { status: prevStatus },
     newValue: { status: canonicalNewStatus, reason },
   });
 
   res.json({
     success: true,
     status: canonicalNewStatus,
+    order: result.order,
     message: `Order #${orderId} status updated to ${canonicalNewStatus}.`,
   });
 });
