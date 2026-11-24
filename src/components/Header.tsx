@@ -86,6 +86,7 @@ export const Header: React.FC<HeaderProps> = ({
   const { user: authUser, logout, openAuthModal, isAdmin, isSeller } = useAuth();
   const currentUser = user || authUser;
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [inputValue, setInputValue] = useState(searchQuery);
   const [selectedCurrency, setSelectedCurrency] = useState(CURRENCIES[0]);
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [showCurrencyMenu, setShowCurrencyMenu] = useState(false);
@@ -96,7 +97,12 @@ export const Header: React.FC<HeaderProps> = ({
 
 
   const searchRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const accountRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setInputValue(searchQuery);
+  }, [searchQuery]);
 
   const cartTotalCount = cart.reduce((acc, item) => acc + item.quantity, 0);
   const cartTotalPrice = cart.reduce(
@@ -105,7 +111,7 @@ export const Header: React.FC<HeaderProps> = ({
   );
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setIsSearchFocused(false);
       }
@@ -114,13 +120,32 @@ export const Header: React.FC<HeaderProps> = ({
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside, { passive: true });
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
   }, []);
 
-  const handleSuggestionClick = (text: string) => {
-    onSearch(text);
+  const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
     setIsSearchFocused(false);
+    searchInputRef.current?.blur();
+    onSearch(inputValue.trim());
   };
+
+  const handleSuggestionClick = (text: string) => {
+    setInputValue(text);
+    setIsSearchFocused(false);
+    searchInputRef.current?.blur();
+    onSearch(text);
+  };
+
+  const trimmedDraft = inputValue.trim().toLowerCase();
+  const matchingSuggestions = trimmedDraft
+    ? SEARCH_SUGGESTIONS.filter((item) => item.toLowerCase().includes(trimmedDraft))
+    : SEARCH_SUGGESTIONS;
+  const displayedSuggestions = matchingSuggestions.length > 0 ? matchingSuggestions : SEARCH_SUGGESTIONS;
 
   return (
     <header className="sticky top-0 z-40 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 transition-colors shadow-xs">
@@ -268,8 +293,9 @@ export const Header: React.FC<HeaderProps> = ({
             <div
               id="brand-logo"
               onClick={() => {
+                setInputValue('');
+                setIsSearchFocused(false);
                 onSelectCategory(null);
-                onSearch('');
               }}
               className="cursor-pointer group flex flex-col select-none"
             >
@@ -303,24 +329,47 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Large AI Search Bar - Full width on mobile row 2, center column on sm+ */}
           <div ref={searchRef} className="w-full sm:flex-1 sm:max-w-2xl relative order-3 sm:order-2">
-            <div className="flex items-center relative rounded-full border border-slate-300 dark:border-slate-700 focus-within:border-[#ff6a00] focus-within:ring-2 focus-within:ring-[#ff6a00]/20 bg-slate-50 dark:bg-slate-800 transition-all">
-              <div className="pl-3 sm:pl-4 text-slate-400 shrink-0">
+            <form
+              onSubmit={handleSearchSubmit}
+              role="search"
+              className="flex items-center relative rounded-full border border-slate-300 dark:border-slate-700 focus-within:border-[#ff6a00] focus-within:ring-2 focus-within:ring-[#ff6a00]/20 bg-slate-50 dark:bg-slate-800 transition-all"
+            >
+              <div className="pl-3 sm:pl-4 text-slate-400 shrink-0 pointer-events-none">
                 <Sparkles className="w-4 h-4 text-[#ff6a00]" />
               </div>
               <input
+                ref={searchInputRef}
                 id="main-search-input"
-                type="text"
-                value={searchQuery}
-                onChange={(e) => onSearch(e.target.value)}
+                type="search"
+                enterKeyHint="search"
+                autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                value={inputValue}
+                onChange={(e) => {
+                  setInputValue(e.target.value);
+                  if (!isSearchFocused) setIsSearchFocused(true);
+                }}
                 onFocus={() => setIsSearchFocused(true)}
                 placeholder={t('common.searchPlaceholder', 'Search 50M+ products, luxury brands & deals...')}
-                className="w-full min-w-0 py-2 sm:py-2.5 pl-2 pr-1 text-xs sm:text-sm bg-transparent text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden"
+                aria-label={t('common.search', 'Search')}
+                className="w-full min-w-0 py-2 sm:py-2.5 pl-2 pr-1 text-sm bg-transparent text-slate-900 dark:text-white placeholder-slate-400 focus:outline-hidden [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
               />
-              {searchQuery && (
+              {inputValue && (
                 <button
+                  type="button"
                   id="clear-search-btn"
-                  onClick={() => onSearch('')}
-                  className="p-1 mr-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0"
+                  onClick={() => {
+                    setInputValue('');
+                    setIsSearchFocused(true);
+                    searchInputRef.current?.focus();
+                    if (searchQuery) {
+                      onSearch('');
+                    }
+                  }}
+                  aria-label={t('common.clearSearch', 'Clear search')}
+                  className="p-1 mr-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0 cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -359,14 +408,15 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
 
               <button
+                type="submit"
                 id="search-submit-btn"
-                onClick={() => setIsSearchFocused(false)}
                 className="bg-[#ff6a00] hover:bg-[#e65f00] text-white p-2 sm:p-2.5 rounded-full mr-1 transition-colors cursor-pointer shrink-0 shadow-xs"
                 title={t('common.search', 'Search')}
+                aria-label={t('common.search', 'Search')}
               >
                 <Search className="w-4 h-4" />
               </button>
-            </div>
+            </form>
 
             {/* Autocomplete Dropdown */}
             {isSearchFocused && (
@@ -379,11 +429,12 @@ export const Header: React.FC<HeaderProps> = ({
                   <span className="text-[10px] text-slate-400">Press enter to query</span>
                 </div>
                 <div className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                  {SEARCH_SUGGESTIONS.map((item, idx) => (
+                  {displayedSuggestions.map((item, idx) => (
                     <button
+                      type="button"
                       key={idx}
                       onClick={() => handleSuggestionClick(item)}
-                      className="w-full text-left px-4 py-2 text-xs sm:text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-between group transition-colors"
+                      className="w-full text-left px-4 py-2 text-xs sm:text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-between group transition-colors cursor-pointer"
                     >
                       <div className="flex items-center gap-2.5">
                         <Search className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#ff6a00] transition-colors" />

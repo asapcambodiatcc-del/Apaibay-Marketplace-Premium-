@@ -131,6 +131,20 @@ export default function App() {
     return 'other';
   };
 
+  const urlSearchQuery =
+    location.pathname === '/search'
+      ? new URLSearchParams(location.search).get('q') || ''
+      : '';
+
+  const handleHeaderSearch = (query: string) => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      navigate('/search');
+      return;
+    }
+    navigate(`/search?q=${encodeURIComponent(trimmed)}`);
+  };
+
   return (
     <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-white dark:bg-[#05070b] text-slate-900 dark:text-slate-100 transition-colors flex flex-col font-sans pb-16 lg:pb-0">
       {/* Global Header */}
@@ -151,8 +165,8 @@ export default function App() {
         onOpenSellerCenter={() => navigate('/seller')}
         onOpenAdmin={() => navigate('/admin')}
         onSelectCategory={(cat) => navigate(cat ? `/category/${cat}` : '/')}
-        onSearch={(q) => navigate(`/search?q=${encodeURIComponent(q)}`)}
-        searchQuery=""
+        onSearch={handleHeaderSearch}
+        searchQuery={urlSearchQuery}
         onToggleMobileCategory={() => setShowMobileCategories(true)}
         isDarkMode={isDarkMode}
         onToggleDarkMode={toggleTheme}
