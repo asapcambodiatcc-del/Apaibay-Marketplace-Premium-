@@ -3,13 +3,18 @@
 # Multi-stage production build for Node.js + Express backend & Vite static assets
 # ==============================================================================
 
+FROM oven/bun:1.4.4-alpine AS bun
+
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install build dependencies
-COPY package.json bun.lock* package-lock.json* ./
-RUN npm install
+# Provide pinned Bun binary matching bun.lock for reproducible dependency installs
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+
+# Install build dependencies from bun.lock
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
 
 # Copy application source code
 COPY . .
@@ -27,9 +32,12 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Install production dependencies only
-COPY package.json bun.lock* package-lock.json* ./
-RUN npm install --omit=dev
+# Provide pinned Bun binary matching bun.lock for reproducible production installs
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+
+# Install production dependencies only from bun.lock
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile --production && rm -rf /root/.bun
 
 # Copy compiled build artifacts from builder stage
 COPY --from=builder /app/dist ./dist
